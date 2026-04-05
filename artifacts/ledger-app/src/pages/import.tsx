@@ -116,6 +116,7 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
       }
 
       const data = await response.json();
+      const diag = data.diagnostic as { finishReason?: string; completionTokens?: number; promptTokens?: number; rawCount?: number } | undefined;
       const rawTxs = data.transactions as Array<{
         date: string;
         name: string;
@@ -156,9 +157,12 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
 
       const incomeCount = withConfidence.filter((i) => i.txType === "income").length;
       const expenseCount = withConfidence.filter((i) => i.txType === "expense").length;
+      const diagNote = diag
+        ? ` [AI raw: ${diag.rawCount}, tokens: ${diag.completionTokens}, stop: ${diag.finishReason}]`
+        : "";
       toast({
         title: "Statement analyzed",
-        description: `Found ${expenseCount} expense${expenseCount !== 1 ? "s" : ""} and ${incomeCount} income transaction${incomeCount !== 1 ? "s" : ""}.`,
+        description: `Found ${expenseCount} expense${expenseCount !== 1 ? "s" : ""} and ${incomeCount} income transaction${incomeCount !== 1 ? "s" : ""}.${diagNote}`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "AI parsing failed";
