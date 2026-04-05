@@ -191,16 +191,29 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
       return;
     }
 
-    const payload = toSave.map((it) => ({
-      date: it.date,
-      name: it.name,
-      amount: it.amount,
-      category: it.resolvedCategory,
-      status: it.status,
-      month: selectedMonth,
-      isDuplicate: it.isDuplicate ?? false,
-      ...(it.ruleApplied ? { ruleApplied: it.ruleApplied } : {}),
-    }));
+    const payload = toSave.map((it) => {
+      let month = selectedMonth;
+      try {
+        const parts = it.date.split("/");
+        if (parts.length === 3) {
+          const m = parts[0].padStart(2, "0");
+          const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+          month = `${y}-${m}`;
+        }
+      } catch {
+        month = selectedMonth;
+      }
+      return {
+        date: it.date,
+        name: it.name,
+        amount: it.amount,
+        category: it.resolvedCategory,
+        status: it.status,
+        month,
+        isDuplicate: it.isDuplicate ?? false,
+        ...(it.ruleApplied ? { ruleApplied: it.ruleApplied } : {}),
+      };
+    });
 
     bulkAdd.mutate(payload, {
       onSuccess: () => {

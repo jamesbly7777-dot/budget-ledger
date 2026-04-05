@@ -85,7 +85,7 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
       messages = [
         {
           role: "user",
-          content: `Extract all transactions from this bank statement text and return only the JSON array.\n\n---\n${text.slice(0, 12000)}`,
+          content: `Extract all transactions from this bank statement text and return only the JSON array.\n\n---\n${text.slice(0, 80000)}`,
         },
       ];
     } else {
