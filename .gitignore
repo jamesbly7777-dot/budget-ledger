@@ -8,6 +8,13 @@ out-tsc
 .expo
 .expo-shared
 
+# Keep production builds for deployment
+!artifacts/ledger-app/dist/
+!artifacts/ledger-app/dist/public/
+!artifacts/ledger-app/dist/public/**
+!artifacts/api-server/dist/
+!artifacts/api-server/dist/**
+
 # dependencies
 node_modules
 
