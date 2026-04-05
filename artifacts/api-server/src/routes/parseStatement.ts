@@ -20,7 +20,7 @@ const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
 });
 
-const SYSTEM_PROMPT = `You are a bank statement parser. Extract only OUTGOING transactions (money leaving the account) from the provided bank statement.
+const SYSTEM_PROMPT = `You are a bank statement parser. Extract ALL transactions (both income/deposits and expenses/withdrawals) from the provided bank statement.
 
 Return ONLY a valid JSON array (no markdown, no explanation) with this exact structure:
 [
@@ -28,17 +28,27 @@ Return ONLY a valid JSON array (no markdown, no explanation) with this exact str
     "date": "MM/DD/YYYY",
     "name": "Transaction description as written",
     "amount": 12.34,
-    "confidence": "high" | "medium" | "low"
+    "type": "expense",
+    "incomeSource": null,
+    "confidence": "high"
   }
 ]
 
-Rules:
+Field rules:
 - date: format as MM/DD/YYYY. If year is missing, use the current year.
 - name: use the exact merchant/description from the statement
-- amount: always positive number (absolute value). Do NOT include the dollar sign.
+- amount: always a POSITIVE number (absolute value). Never include the dollar sign.
+- type: "expense" for money going OUT, "income" for money coming IN
+- incomeSource: only for income transactions, pick the closest match from:
+    "Payroll" — direct deposit from an employer, payroll processor
+    "Gig Work" — Amazon Flex, DoorDash, Uber, Lyft, Grubhub, Instacart, gig platforms
+    "Cash Transfer" — Cash App, Venmo, Zelle, PayPal, person-to-person transfers received
+    "Side Business" — freelance, contractor, self-employment, Etsy, eBay, Shopify
+    "Other Income" — tax refunds, insurance claims, bank bonuses, anything else
+    Set to null for expense transactions.
 - confidence: "high" if clearly legible, "medium" if partially visible, "low" if unclear
 
-INCLUDE (money going OUT):
+EXPENSES (type: "expense") — money going OUT:
 - Purchases and payments to merchants
 - Recurring payments and subscriptions
 - Transfers TO another account (e.g. "Online Transfer to...", "Transfer Debit to...")
@@ -48,19 +58,25 @@ INCLUDE (money going OUT):
 - Cash App sends and similar outgoing transfers
 - Any amount listed in the Withdrawals/Subtractions column
 
-EXCLUDE (money coming IN — do NOT include these):
-- Direct deposits and payroll (e.g. "Dir Dep", "PR Dir Dep")
-- "Money Transfer From..." entries (these are incoming transfers/deposits)
-- "Online Transfer From..." entries (these are incoming transfers)
-- Credits, refunds, and reimbursements
-- Wells Fargo Rewards credits
+INCOME (type: "income") — money coming IN:
+- Direct deposits from employers (e.g. "Dir Dep", "PR Dir Dep", "Payroll")
+- Amazon Flex, DoorDash, Uber, or other gig platform deposits
+- Incoming Cash App, Venmo, Zelle, PayPal transfers received FROM someone
+  → In Wells Fargo: "Money Transfer authorized on [date] From [name]" = INCOME (incomeSource: "Cash Transfer")
+- Tax refunds (IRS, state) = INCOME (incomeSource: "Other Income")
+- Bank bonuses, cashback credits = INCOME (incomeSource: "Other Income")
 - Any amount listed in the Deposits/Additions column
-- Ending daily balance figures
-- Account numbers
 
-NOTE: In Wells Fargo statements, "Money Transfer authorized on [date] From [name]" means money coming IN — these are DEPOSITS and must be excluded. Only "Money Transfer authorized on [date] [payee]" without "From" or with "To" means money going OUT.
+NOTE: In Wells Fargo statements, "Money Transfer authorized on [date] From [name]" = money coming IN = income.
+Only "Money Transfer authorized on [date] [payee]" without "From" or with "To" = money going OUT = expense.
 
-- Return empty array [] if no outgoing transactions found`;
+EXCLUDE entirely:
+- Balance figures, account numbers, running daily balances
+- Wells Fargo Rewards credits (these are point redemptions, not cash)
+- Duplicate balance lines
+
+Return an empty array [] if no transactions are found.`;
+
 
 router.post("/parse-statement", upload.single("file"), async (req, res) => {
   if (!req.file) {

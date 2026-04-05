@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useTransactions, useRules, useBulkAddTransactions } from "@/hooks/use-finance";
 import { parseCSV } from "@/lib/csvParser";
 import { runRulesEngine } from "@/lib/rulesEngine";
-import { ImportPreviewItem } from "@/lib/types";
+import { ImportPreviewItem, INCOME_CATEGORIES } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,8 @@ import {
   Sparkles,
   X,
   FileText,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,7 +24,7 @@ import { useLocation } from "wouter";
 
 type ImportMode = "csv" | "ai";
 
-const CATEGORIES = [
+const EXPENSE_CATEGORIES = [
   "Bills",
   "Fuel",
   "Necessary",
@@ -54,12 +56,10 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
   const handleCSVChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (!file.name.endsWith(".csv")) {
       toast({ variant: "destructive", title: "Invalid file", description: "Please upload a CSV file." });
       return;
     }
-
     setParsing(true);
     try {
       const rows = await parseCSV(file);
@@ -90,9 +90,7 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
 
     const isPdf = file.type === "application/pdf";
     setPreviewIsPdf(isPdf);
-
-    const objectUrl = isPdf ? null : URL.createObjectURL(file);
-    setPreviewImageUrl(objectUrl);
+    setPreviewImageUrl(isPdf ? null : URL.createObjectURL(file));
     setAiStage("uploading");
 
     try {
@@ -108,11 +106,7 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ error: "Server error" }));
         if (errData.code === "PDF_NOT_SUPPORTED") {
-          toast({
-            variant: "destructive",
-            title: "PDF not supported",
-            description: errData.error,
-          });
+          toast({ variant: "destructive", title: "PDF not supported", description: errData.error });
           setAiStage("idle");
           setPreviewImageUrl(null);
           if (aiInputRef.current) aiInputRef.current.value = "";
@@ -126,14 +120,13 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
         date: string;
         name: string;
         amount: number;
+        type?: string;
+        incomeSource?: string | null;
         confidence: string;
       }>;
 
       if (!rawTxs || rawTxs.length === 0) {
-        toast({
-          title: "No transactions found",
-          description: "The AI could not detect any transactions in this image. Try a clearer screenshot.",
-        });
+        toast({ title: "No transactions found", description: "The AI could not detect any transactions. Try a clearer file." });
         setAiStage("idle");
         setPreviewImageUrl(null);
         if (aiInputRef.current) aiInputRef.current.value = "";
@@ -145,24 +138,27 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
         name: t.name,
         amount: Math.abs(t.amount),
         confidence: t.confidence,
+        txType: (t.type === "income" ? "income" : "expense") as "income" | "expense",
+        incomeCategory: t.incomeSource
+          ? (INCOME_CATEGORIES.includes(t.incomeSource as any) ? t.incomeSource as any : "Other Income")
+          : undefined,
       }));
 
       const processed = runRulesEngine(parsedRows, userRules || [], existingTxs || []);
 
       const withConfidence = processed.map((item, i) => ({
         ...item,
-        status:
-          parsedRows[i]?.confidence === "low"
-            ? ("review" as const)
-            : item.status,
+        status: parsedRows[i]?.confidence === "low" ? ("review" as const) : item.status,
       }));
 
       setPreviewItems(withConfidence);
       setAiStage("done");
 
+      const incomeCount = withConfidence.filter((i) => i.txType === "income").length;
+      const expenseCount = withConfidence.filter((i) => i.txType === "expense").length;
       toast({
         title: "Statement analyzed",
-        description: `Found ${rawTxs.length} transaction${rawTxs.length !== 1 ? "s" : ""}. Review and confirm below.`,
+        description: `Found ${expenseCount} expense${expenseCount !== 1 ? "s" : ""} and ${incomeCount} income transaction${incomeCount !== 1 ? "s" : ""}.`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "AI parsing failed";
@@ -180,7 +176,17 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
 
   const updateItemCategory = (id: string, category: string) => {
     setPreviewItems((items) =>
-      items.map((it) => (it.id === id ? { ...it, resolvedCategory: category as ImportPreviewItem["resolvedCategory"] } : it))
+      items.map((it) =>
+        it.id === id ? { ...it, resolvedCategory: category as ImportPreviewItem["resolvedCategory"] } : it
+      )
+    );
+  };
+
+  const updateItemIncomeCategory = (id: string, incomeCategory: string) => {
+    setPreviewItems((items) =>
+      items.map((it) =>
+        it.id === id ? { ...it, incomeCategory: incomeCategory as ImportPreviewItem["incomeCategory"] } : it
+      )
     );
   };
 
@@ -209,15 +215,23 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
         amount: it.amount,
         category: it.resolvedCategory,
         status: it.status,
+        type: it.txType,
         month,
         isDuplicate: it.isDuplicate ?? false,
+        ...(it.txType === "income" && it.incomeCategory ? { incomeCategory: it.incomeCategory } : {}),
         ...(it.ruleApplied ? { ruleApplied: it.ruleApplied } : {}),
       };
     });
 
-    bulkAdd.mutate(payload, {
+    bulkAdd.mutate(payload as any, {
       onSuccess: () => {
-        toast({ title: "Import Successful", description: `Saved ${toSave.length} transactions.` });
+        const saved = toSave.length;
+        const inc = toSave.filter((t) => t.txType === "income").length;
+        const exp = saved - inc;
+        toast({
+          title: "Import Successful",
+          description: `Saved ${exp} expense${exp !== 1 ? "s" : ""} and ${inc} income transaction${inc !== 1 ? "s" : ""}.`,
+        });
         setPreviewItems([]);
         setPreviewImageUrl(null);
         setPreviewIsPdf(false);
@@ -239,6 +253,10 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
   };
 
   const isAnalyzing = aiStage === "uploading" || aiStage === "analyzing";
+  const incomeItems = previewItems.filter((i) => i.txType === "income");
+  const expenseItems = previewItems.filter((i) => i.txType === "expense");
+  const totalIncome = incomeItems.filter((i) => i.action === "save").reduce((s, i) => s + i.amount, 0);
+  const totalExpense = expenseItems.filter((i) => i.action === "save").reduce((s, i) => s + i.amount, 0);
 
   return (
     <div className="space-y-6">
@@ -276,7 +294,7 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
             >
               <Sparkles className="w-5 h-5 mb-2" />
               <div className="font-mono text-xs font-bold uppercase tracking-wider">AI Vision</div>
-              <div className="text-[11px] mt-1 font-mono opacity-70">Screenshot or photo</div>
+              <div className="text-[11px] mt-1 font-mono opacity-70">PDF or screenshot — income + expenses</div>
             </button>
           </div>
 
@@ -289,23 +307,13 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
                 <p className="text-sm text-muted-foreground font-mono text-center max-w-xs">
                   Upload your bank's CSV export. Rules engine will auto-categorize and flag duplicates.
                 </p>
-                <input
-                  type="file"
-                  accept=".csv"
-                  className="hidden"
-                  ref={csvInputRef}
-                  onChange={handleCSVChange}
-                />
+                <input type="file" accept=".csv" className="hidden" ref={csvInputRef} onChange={handleCSVChange} />
                 <Button
                   onClick={() => csvInputRef.current?.click()}
                   disabled={parsing}
                   className="font-mono uppercase text-xs tracking-wider"
                 >
-                  {parsing ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <UploadCloud className="w-4 h-4 mr-2" />
-                  )}
+                  {parsing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UploadCloud className="w-4 h-4 mr-2" />}
                   Select CSV File
                 </Button>
               </CardContent>
@@ -323,9 +331,7 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
                         {aiStage === "uploading" ? "Uploading..." : "Analyzing statement..."}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {aiStage === "analyzing"
-                          ? "AI is reading your transactions"
-                          : "Sending image to AI"}
+                        {aiStage === "analyzing" ? "AI is reading income + expenses" : "Sending file to AI"}
                       </p>
                     </div>
                     <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -336,7 +342,7 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
                       <Camera className="w-7 h-7 text-muted-foreground" />
                     </div>
                     <p className="text-sm text-muted-foreground font-mono text-center max-w-xs">
-                      Upload a PDF bank statement or screenshot. AI will extract all transactions automatically.
+                      Upload a PDF or screenshot. AI extracts both income and expenses, categorized by source.
                     </p>
                     <input
                       type="file"
@@ -345,10 +351,7 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
                       ref={aiInputRef}
                       onChange={handleAIImageChange}
                     />
-                    <Button
-                      onClick={() => aiInputRef.current?.click()}
-                      className="font-mono uppercase text-xs tracking-wider"
-                    >
+                    <Button onClick={() => aiInputRef.current?.click()} className="font-mono uppercase text-xs tracking-wider">
                       <Camera className="w-4 h-4 mr-2" />
                       Upload Statement
                     </Button>
@@ -370,66 +373,54 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
                   <FileText className="w-8 h-8 text-primary" />
                 </div>
               ) : (
-                <img
-                  src={previewImageUrl!}
-                  alt="Uploaded statement"
-                  className="w-16 h-16 object-cover rounded border border-border flex-shrink-0"
-                />
+                <img src={previewImageUrl!} alt="Uploaded statement" className="w-16 h-16 object-cover rounded border border-border flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
                   {previewIsPdf ? "Source PDF" : "Source image"}
                 </p>
-                <p className="text-sm font-medium mt-0.5">
-                  {previewIsPdf ? "Bank statement PDF" : "Bank statement screenshot"}
-                </p>
+                <p className="text-sm font-medium mt-0.5">{previewIsPdf ? "Bank statement PDF" : "Bank statement screenshot"}</p>
                 <p className="text-[11px] font-mono text-primary mt-1 flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  Parsed with AI
+                  <Sparkles className="w-3 h-3" /> Parsed with AI — income + expenses
                 </p>
               </div>
             </div>
           )}
 
-          <div className="flex items-center justify-between bg-card p-4 rounded-lg border border-border">
-            <div className="flex items-center gap-6 text-sm font-mono">
+          <div className="flex items-center justify-between bg-card p-4 rounded-lg border border-border flex-wrap gap-3">
+            <div className="flex items-center gap-5 text-sm font-mono flex-wrap">
               <div className="flex flex-col">
-                <span className="text-muted-foreground uppercase text-[10px] tracking-wider">Total Parsed</span>
+                <span className="text-muted-foreground uppercase text-[10px] tracking-wider">Total</span>
                 <span className="font-bold text-lg">{previewItems.length}</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-muted-foreground uppercase text-[10px] tracking-wider">To Save</span>
-                <span className="font-bold text-lg text-green-400">
-                  {previewItems.filter((i) => i.action === "save").length}
+                <span className="text-muted-foreground uppercase text-[10px] tracking-wider flex items-center gap-1">
+                  <TrendingUp className="w-3 h-3 text-emerald-400" /> Income
+                </span>
+                <span className="font-bold text-lg text-emerald-400">
+                  {incomeItems.filter((i) => i.action === "save").length}
+                  <span className="text-xs ml-1 text-muted-foreground">${totalIncome.toFixed(0)}</span>
+                </span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-muted-foreground uppercase text-[10px] tracking-wider flex items-center gap-1">
+                  <TrendingDown className="w-3 h-3 text-red-400" /> Expenses
+                </span>
+                <span className="font-bold text-lg text-red-400">
+                  {expenseItems.filter((i) => i.action === "save").length}
+                  <span className="text-xs ml-1 text-muted-foreground">${totalExpense.toFixed(0)}</span>
                 </span>
               </div>
               <div className="flex flex-col">
                 <span className="text-muted-foreground uppercase text-[10px] tracking-wider">Duplicates</span>
-                <span className="font-bold text-lg text-red-400">
-                  {previewItems.filter((i) => i.isDuplicate).length}
-                </span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-muted-foreground uppercase text-[10px] tracking-wider">Review</span>
-                <span className="font-bold text-lg text-yellow-400">
-                  {previewItems.filter((i) => i.action === "review").length}
-                </span>
+                <span className="font-bold text-lg text-yellow-400">{previewItems.filter((i) => i.isDuplicate).length}</span>
               </div>
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={handleReset}
-                className="font-mono text-xs uppercase tracking-wider"
-              >
-                <X className="w-3 h-3 mr-1" />
-                Cancel
+              <Button variant="outline" onClick={handleReset} className="font-mono text-xs uppercase tracking-wider">
+                <X className="w-3 h-3 mr-1" /> Cancel
               </Button>
-              <Button
-                onClick={handleConfirm}
-                disabled={bulkAdd.isPending}
-                className="font-mono text-xs uppercase tracking-wider"
-              >
+              <Button onClick={handleConfirm} disabled={bulkAdd.isPending} className="font-mono text-xs uppercase tracking-wider">
                 {bulkAdd.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Confirm Import
               </Button>
@@ -448,82 +439,110 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
                   </tr>
                 </thead>
                 <tbody>
-                  {previewItems.map((item) => (
-                    <tr
-                      key={item.id}
-                      className={`border-b border-border/50 ${
-                        item.isDuplicate
-                          ? "bg-red-500/5"
-                          : item.status === "review"
-                          ? "bg-yellow-500/5"
-                          : ""
-                      }`}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="font-mono text-xs text-muted-foreground mb-1">{item.date}</div>
-                        <div className="font-medium max-w-[200px] truncate" title={item.name}>
-                          {item.name}
-                        </div>
-                        {item.ruleApplied && (
-                          <div className="text-[10px] text-primary/70 font-mono mt-1 flex items-center gap-1">
-                            <Check className="w-3 h-3" />
-                            {item.ruleApplied}
+                  {previewItems.map((item) => {
+                    const isIncome = item.txType === "income";
+                    return (
+                      <tr
+                        key={item.id}
+                        className={`border-b border-border/50 ${
+                          item.isDuplicate
+                            ? "bg-yellow-500/5"
+                            : isIncome
+                            ? "bg-emerald-500/5"
+                            : item.status === "review"
+                            ? "bg-orange-500/5"
+                            : ""
+                        }`}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-mono text-xs text-muted-foreground">{item.date}</span>
+                            {isIncome ? (
+                              <span className="text-[9px] font-mono uppercase tracking-wider bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                <TrendingUp className="w-2.5 h-2.5" /> Income
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-mono uppercase tracking-wider bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                <TrendingDown className="w-2.5 h-2.5" /> Expense
+                              </span>
+                            )}
                           </div>
-                        )}
-                        {item.isDuplicate && (
-                          <div className="text-[10px] text-destructive font-mono mt-1 flex items-center gap-1">
-                            <AlertTriangle className="w-3 h-3" />
-                            Potential Duplicate
+                          <div className="font-medium max-w-[200px] truncate" title={item.name}>
+                            {item.name}
                           </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-mono font-bold text-right">
-                        ${item.amount.toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Select
-                          value={item.resolvedCategory}
-                          onValueChange={(v) => updateItemCategory(item.id, v)}
-                        >
-                          <SelectTrigger className="h-8 font-mono text-[10px] uppercase w-[120px] bg-transparent border-border">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {CATEGORIES.map((cat) => (
-                              <SelectItem key={cat} value={cat}>
-                                {cat}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Select
-                          value={item.action}
-                          onValueChange={(v: "save" | "skip" | "review") =>
-                            updateItemAction(item.id, v)
-                          }
-                        >
-                          <SelectTrigger
-                            className={`h-8 font-mono text-[10px] uppercase w-[100px] ${
-                              item.action === "save"
-                                ? "text-green-400 border-green-500/30 bg-green-500/10"
-                                : item.action === "skip"
-                                ? "text-muted-foreground border-border bg-transparent"
-                                : "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
-                            }`}
+                          {item.ruleApplied && (
+                            <div className="text-[10px] text-primary/70 font-mono mt-1 flex items-center gap-1">
+                              <Check className="w-3 h-3" /> {item.ruleApplied}
+                            </div>
+                          )}
+                          {item.isDuplicate && (
+                            <div className="text-[10px] text-yellow-500 font-mono mt-1 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> Potential Duplicate
+                            </div>
+                          )}
+                        </td>
+                        <td className={`px-4 py-3 font-mono font-bold text-right ${isIncome ? "text-emerald-400" : ""}`}>
+                          {isIncome ? "+" : ""}${item.amount.toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isIncome ? (
+                            <Select
+                              value={item.incomeCategory ?? "Other Income"}
+                              onValueChange={(v) => updateItemIncomeCategory(item.id, v)}
+                            >
+                              <SelectTrigger className="h-8 font-mono text-[10px] uppercase w-[130px] bg-emerald-500/10 border-emerald-500/30 text-emerald-400">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {INCOME_CATEGORIES.map((cat) => (
+                                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Select
+                              value={item.resolvedCategory}
+                              onValueChange={(v) => updateItemCategory(item.id, v)}
+                            >
+                              <SelectTrigger className="h-8 font-mono text-[10px] uppercase w-[120px] bg-transparent border-border">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {EXPENSE_CATEGORIES.map((cat) => (
+                                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Select
+                            value={item.action}
+                            onValueChange={(v: "save" | "skip" | "review") => updateItemAction(item.id, v)}
                           >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="save">Save</SelectItem>
-                            <SelectItem value="skip">Skip</SelectItem>
-                            <SelectItem value="review">Review</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </td>
-                    </tr>
-                  ))}
+                            <SelectTrigger
+                              className={`h-8 font-mono text-[10px] uppercase w-[100px] ${
+                                item.action === "save"
+                                  ? isIncome
+                                    ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                                    : "text-green-400 border-green-500/30 bg-green-500/10"
+                                  : item.action === "skip"
+                                  ? "text-muted-foreground border-border bg-transparent"
+                                  : "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
+                              }`}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="save">Save</SelectItem>
+                              <SelectItem value="skip">Skip</SelectItem>
+                              <SelectItem value="review">Review</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

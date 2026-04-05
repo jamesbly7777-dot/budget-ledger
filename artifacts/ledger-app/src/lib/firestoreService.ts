@@ -156,8 +156,11 @@ export async function deleteRule(userId: string, ruleId: string): Promise<void> 
 
 export async function recalculateMonthTotals(userId: string, month: string): Promise<void> {
   const transactions = await getTransactions(userId, month);
-  const total = transactions.reduce((sum, t) => sum + t.amount, 0);
-  await upsertMonth(userId, month, { totalSpending: total });
+  const expenses = transactions.filter((t) => !t.type || t.type === "expense");
+  const income = transactions.filter((t) => t.type === "income");
+  const totalSpending = expenses.reduce((sum, t) => sum + t.amount, 0);
+  const totalIncome = income.reduce((sum, t) => sum + t.amount, 0);
+  await upsertMonth(userId, month, { totalSpending, totalIncome });
 }
 
 export async function reapplyRulesToTransactions(
@@ -178,6 +181,7 @@ export async function reapplyRulesToTransactions(
 }
 
 export function computeCategoryTotals(transactions: Transaction[]): Record<TransactionCategory, number> {
+  const expenses = transactions.filter((t) => !t.type || t.type === "expense");
   const totals: Record<TransactionCategory, number> = {
     Bills: 0,
     Fuel: 0,
@@ -189,10 +193,26 @@ export function computeCategoryTotals(transactions: Transaction[]): Record<Trans
     Waste: 0,
     Uncategorized: 0,
   };
-  for (const t of transactions) {
+  for (const t of expenses) {
     if (t.category in totals) {
       totals[t.category] += t.amount;
     }
+  }
+  return totals;
+}
+
+export function computeIncomeTotals(transactions: Transaction[]): Record<string, number> {
+  const income = transactions.filter((t) => t.type === "income");
+  const totals: Record<string, number> = {
+    Payroll: 0,
+    "Gig Work": 0,
+    "Cash Transfer": 0,
+    "Side Business": 0,
+    "Other Income": 0,
+  };
+  for (const t of income) {
+    const key = t.incomeCategory ?? "Other Income";
+    totals[key] = (totals[key] ?? 0) + t.amount;
   }
   return totals;
 }

@@ -1,4 +1,4 @@
-import type { ImportPreviewItem, Rule, Transaction, TransactionCategory, TransactionStatus } from "./types";
+import type { ImportPreviewItem, IncomeCategory, Rule, Transaction, TransactionCategory, TransactionStatus, TransactionType } from "./types";
 
 const BUILT_IN_RULES_PRIORITY = 100;
 
@@ -7,6 +7,8 @@ interface RawTransaction {
   name: string;
   amount: number;
   rawCategory?: string;
+  txType?: TransactionType;
+  incomeCategory?: IncomeCategory;
 }
 
 function applyFuelRule(name: string, amount: number): TransactionCategory | null {
@@ -136,11 +138,9 @@ export function runRulesEngine(
   const seenInBatch = new Map<string, string>();
 
   for (const item of rawItems) {
-    const { category, status, skip, ruleApplied } = categorizeByRules(item, userRules);
+    const txType = item.txType ?? "expense";
 
-    if (skip) continue;
-
-    const batchKey = `${item.date}|${item.name.toLowerCase().trim()}|${item.amount}`;
+    const batchKey = `${item.date}|${item.name.toLowerCase().trim()}|${item.amount}|${txType}`;
     const existingDup = isDuplicate(item, existingTransactions);
 
     let batchDupOf: string | undefined;
@@ -151,6 +151,30 @@ export function runRulesEngine(
     }
 
     const duplicate = existingDup.isDuplicate || !!batchDupOf;
+
+    if (txType === "income") {
+      const previewItem: ImportPreviewItem = {
+        id: crypto.randomUUID(),
+        date: item.date,
+        name: item.name,
+        amount: item.amount,
+        rawCategory: item.rawCategory,
+        resolvedCategory: "Uncategorized",
+        status: duplicate ? "review" : "cleared",
+        txType: "income",
+        incomeCategory: item.incomeCategory ?? "Other Income",
+        isDuplicate: duplicate,
+        duplicateOf: existingDup.duplicateOf || batchDupOf,
+        ruleApplied: undefined,
+        action: duplicate ? "review" : "save",
+      };
+      results.push(previewItem);
+      continue;
+    }
+
+    const { category, status, skip, ruleApplied } = categorizeByRules(item, userRules);
+    if (skip) continue;
+
     const previewItem: ImportPreviewItem = {
       id: crypto.randomUUID(),
       date: item.date,
@@ -159,6 +183,7 @@ export function runRulesEngine(
       rawCategory: item.rawCategory,
       resolvedCategory: category,
       status: duplicate ? "review" : status,
+      txType: "expense",
       isDuplicate: duplicate,
       duplicateOf: existingDup.duplicateOf || batchDupOf,
       ruleApplied,

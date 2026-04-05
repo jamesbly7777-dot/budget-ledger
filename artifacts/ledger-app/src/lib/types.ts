@@ -9,6 +9,23 @@ export type TransactionCategory =
   | "Waste"
   | "Uncategorized";
 
+export type IncomeCategory =
+  | "Payroll"
+  | "Gig Work"
+  | "Cash Transfer"
+  | "Side Business"
+  | "Other Income";
+
+export const INCOME_CATEGORIES: IncomeCategory[] = [
+  "Payroll",
+  "Gig Work",
+  "Cash Transfer",
+  "Side Business",
+  "Other Income",
+];
+
+export type TransactionType = "expense" | "income";
+
 export type TransactionStatus = "cleared" | "pending" | "review";
 
 export interface Transaction {
@@ -18,6 +35,8 @@ export interface Transaction {
   amount: number;
   category: TransactionCategory;
   status: TransactionStatus;
+  type?: TransactionType;
+  incomeCategory?: IncomeCategory;
   note?: string;
   month: string;
   userId: string;
@@ -88,6 +107,8 @@ export interface ImportPreviewItem {
   rawCategory?: string;
   resolvedCategory: TransactionCategory;
   status: TransactionStatus;
+  txType: TransactionType;
+  incomeCategory?: IncomeCategory;
   isDuplicate: boolean;
   duplicateOf?: string;
   ruleApplied?: string;
@@ -98,10 +119,13 @@ export interface MonthSummary {
   month: string;
   label: string;
   totalSpending: number;
+  totalIncome: number;
   byCategory: Record<TransactionCategory, number>;
+  byIncomeCategory: Record<IncomeCategory, number>;
   billsTotal: number;
   wasteTotal: number;
   medicalTotal: number;
   fuelTotal: number;
   transactionCount: number;
+  incomeCount: number;
 }
