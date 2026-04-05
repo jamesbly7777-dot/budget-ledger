@@ -2,12 +2,11 @@ import { useState, useEffect, useMemo } from "react";
 import { useBills, useAddBill, useUpdateBill, useDeleteBill, useTransactions } from "@/hooks/use-finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Edit2, Trash2, CheckCircle2, Circle, ScanSearch, Wallet } from "lucide-react";
+import { Loader2, Plus, Edit2, Trash2, CheckCircle2, Circle, ScanSearch, Settings2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { TransactionCategory, Transaction } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 
@@ -18,6 +17,7 @@ interface SuggestedBill {
   dueDay: number;
   category: TransactionCategory;
   monthCount: number;
+  confidence: "recurring" | "likely";
 }
 
 function normalizeName(name: string): string {
@@ -32,6 +32,7 @@ function normalizeName(name: string): string {
 function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
   const expenses = transactions.filter((t) => !t.type || t.type === "expense");
   const groups: Record<string, Transaction[]> = {};
+
   for (const tx of expenses) {
     if (tx.amount < 10) continue;
     if (tx.category === "Transfers") continue;
@@ -42,42 +43,40 @@ function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
   }
 
   const suggestions: SuggestedBill[] = [];
+
   for (const [key, txs] of Object.entries(groups)) {
     const uniqueMonths = new Set(txs.map((t) => t.month));
-    if (uniqueMonths.size < 2) continue;
 
-    const days = txs.map((t) => {
-      const parts = t.date.split("/");
-      return parseInt(parts[1] ?? "1", 10);
-    }).filter((d) => d >= 1 && d <= 31);
-    if (days.length === 0) continue;
+    if (uniqueMonths.size >= 2) {
+      // Multi-month: strict recurring detection
+      const days = txs.map((t) => parseInt(t.date.split("/")[1] ?? "1", 10)).filter((d) => d >= 1 && d <= 31);
+      if (!days.length) continue;
+      const avgDay = days.reduce((a, b) => a + b, 0) / days.length;
+      const dayStdDev = Math.sqrt(days.reduce((s, d) => s + (d - avgDay) ** 2, 0) / days.length);
+      if (dayStdDev > 6) continue;
 
-    const avgDay = days.reduce((a, b) => a + b, 0) / days.length;
-    const dayStdDev = Math.sqrt(days.reduce((sum, d) => sum + (d - avgDay) ** 2, 0) / days.length);
-    if (dayStdDev > 6) continue;
+      const amounts = txs.map((t) => t.amount);
+      const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+      if (avgAmount < 10) continue;
+      const amtStdDev = Math.sqrt(amounts.reduce((s, a) => s + (a - avgAmount) ** 2, 0) / amounts.length);
+      if (amtStdDev / avgAmount > 0.3) continue;
 
-    const amounts = txs.map((t) => t.amount);
-    const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
-    if (avgAmount < 10) continue;
-    const amountStdDev = Math.sqrt(amounts.reduce((sum, a) => sum + (a - avgAmount) ** 2, 0) / amounts.length);
-    if (amountStdDev / avgAmount > 0.3) continue;
+      const nameCounts: Record<string, number> = {};
+      txs.forEach((t) => { nameCounts[t.name] = (nameCounts[t.name] ?? 0) + 1; });
+      const bestName = Object.entries(nameCounts).sort((a, b) => b[1] - a[1])[0][0];
+      const catCounts: Record<string, number> = {};
+      txs.forEach((t) => { catCounts[t.category] = (catCounts[t.category] ?? 0) + 1; });
+      const bestCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0][0] as TransactionCategory;
 
-    const nameCounts: Record<string, number> = {};
-    txs.forEach((t) => { nameCounts[t.name] = (nameCounts[t.name] ?? 0) + 1; });
-    const bestName = Object.entries(nameCounts).sort((a, b) => b[1] - a[1])[0][0];
-
-    const catCounts: Record<string, number> = {};
-    txs.forEach((t) => { catCounts[t.category] = (catCounts[t.category] ?? 0) + 1; });
-    const bestCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0][0] as TransactionCategory;
-
-    suggestions.push({
-      key,
-      name: bestName,
-      amount: Math.round(avgAmount * 100) / 100,
-      dueDay: Math.round(avgDay),
-      category: bestCat,
-      monthCount: uniqueMonths.size,
-    });
+      suggestions.push({ key, name: bestName, amount: Math.round(avgAmount * 100) / 100, dueDay: Math.round(avgDay), category: bestCat, monthCount: uniqueMonths.size, confidence: "recurring" });
+    } else {
+      // Single month: suggest Bills-category or high-amount transactions as likely recurring
+      const tx = txs[0];
+      if (tx.category !== "Bills" && tx.amount < 30) continue;
+      const dueDay = parseInt(tx.date.split("/")[1] ?? "1", 10);
+      if (dueDay < 1 || dueDay > 31) continue;
+      suggestions.push({ key, name: tx.name, amount: tx.amount, dueDay, category: tx.category, monthCount: 1, confidence: "likely" });
+    }
   }
 
   return suggestions.sort((a, b) => a.dueDay - b.dueDay);
@@ -98,12 +97,13 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const deleteBill = useDeleteBill();
   const { toast } = useToast();
 
+  // Paycheck days: stored in localStorage, 0 = not set
   const [paycheckDays, setPaycheckDays] = useState<[number, number]>(() => {
-    try { const s = localStorage.getItem("paycheckDays"); return s ? JSON.parse(s) : [1, 15]; }
-    catch { return [1, 15]; }
+    try { const s = localStorage.getItem("paycheckDays"); return s ? JSON.parse(s) : [0, 0]; }
+    catch { return [0, 0]; }
   });
-  const [paycheckEdit, setPaycheckEdit] = useState(false);
-  const [pcInput, setPcInput] = useState<[string, string]>([String(paycheckDays[0]), String(paycheckDays[1])]);
+  const [paycheckOpen, setPaycheckOpen] = useState(false);
+  const [pcInput, setPcInput] = useState<[string, string]>(["", ""]);
 
   const [detectOpen, setDetectOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedBill[]>([]);
@@ -123,12 +123,22 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     [bills, selectedMonth]
   );
 
-  const [pc1, pc2] = paycheckDays;
-  const window1Bills = monthlyBills.filter((b) => b.dueDay >= pc1 && b.dueDay < pc2);
-  const window2Bills = monthlyBills.filter((b) => b.dueDay >= pc2 || b.dueDay < pc1);
   const totalAmount = monthlyBills.reduce((s, b) => s + b.amount, 0);
   const paidAmount = monthlyBills.filter((b) => b.isPaid).reduce((s, b) => s + b.amount, 0);
   const remaining = totalAmount - paidAmount;
+
+  const [pc1, pc2] = paycheckDays;
+  const paycheckConfigured = pc1 > 0 && pc2 > 0 && pc1 !== pc2;
+
+  // Bills in each paycheck window
+  const window1Bills = paycheckConfigured
+    ? monthlyBills.filter((b) => pc1 < pc2 ? (b.dueDay >= pc1 && b.dueDay < pc2) : (b.dueDay >= pc1 || b.dueDay < pc2))
+    : [];
+  const window2Bills = paycheckConfigured
+    ? monthlyBills.filter((b) => pc1 < pc2 ? (b.dueDay >= pc2 || b.dueDay < pc1) : (b.dueDay >= pc2 && b.dueDay < pc1))
+    : [];
+
+  const todayDay = new Date().getDate();
 
   const handleScan = () => {
     if (!allTxs || allTxs.length === 0) {
@@ -138,24 +148,24 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     const existingKeys = new Set((bills || []).map((b) => normalizeName(b.name)));
     const found = detectRecurringBills(allTxs).filter((s) => !existingKeys.has(s.key));
     if (found.length === 0) {
-      toast({ description: "No new recurring bills detected. All patterns are already tracked." });
+      toast({ description: "No new bill patterns found. Try adding bills manually." });
       return;
     }
     setSuggestions(found);
-    setSelected(new Set(found.map((s) => s.key)));
+    setSelected(new Set(found.filter(s => s.confidence === "recurring").map((s) => s.key)));
     setDetectOpen(true);
   };
 
   const handleAddSuggestions = async () => {
     const toAdd = suggestions.filter((s) => selected.has(s.key));
-    if (toAdd.length === 0) return;
+    if (!toAdd.length) return;
     setAddingAll(true);
     for (const s of toAdd) {
       await addBill.mutateAsync({ name: s.name, amount: s.amount, dueDay: s.dueDay, category: s.category, isRecurring: true, isPaid: false });
     }
     setAddingAll(false);
     setDetectOpen(false);
-    toast({ title: "Bills added", description: `Added ${toAdd.length} recurring bill${toAdd.length !== 1 ? "s" : ""}.` });
+    toast({ title: "Bills added", description: `Added ${toAdd.length} bill${toAdd.length !== 1 ? "s" : ""}.` });
   };
 
   const handleSave = () => {
@@ -169,8 +179,8 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       isPaid: false,
       ...(formData.isRecurring ? {} : { month: selectedMonth }),
     };
-    if (editingId) { updateBill.mutate({ id: editingId, data: payload }); }
-    else { addBill.mutate(payload); }
+    if (editingId) updateBill.mutate({ id: editingId, data: payload });
+    else addBill.mutate(payload);
     setIsDialogOpen(false);
     setFormData(BLANK_FORM);
     setEditingId(null);
@@ -184,31 +194,83 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
 
   const togglePaid = (id: string, current: boolean) => updateBill.mutate({ id, data: { isPaid: !current } });
 
+  const openPaycheckSetup = () => {
+    setPcInput([pc1 > 0 ? String(pc1) : "", pc2 > 0 ? String(pc2) : ""]);
+    setPaycheckOpen(true);
+  };
+
   const savePaycheckDays = () => {
-    const d1 = Math.max(1, Math.min(31, parseInt(pcInput[0]) || 1));
-    const d2 = Math.max(1, Math.min(31, parseInt(pcInput[1]) || 15));
+    const d1 = Math.max(1, Math.min(31, parseInt(pcInput[0]) || 0));
+    const d2 = Math.max(1, Math.min(31, parseInt(pcInput[1]) || 0));
+    if (!d1 || !d2 || d1 === d2) {
+      toast({ variant: "destructive", description: "Enter two different days (1–31) for your paycheck dates." });
+      return;
+    }
     setPaycheckDays([d1, d2]);
-    setPaycheckEdit(false);
+    setPaycheckOpen(false);
+    toast({ description: `Paycheck windows set: Day ${d1} and Day ${d2}.` });
   };
 
   if (billsLoading || txLoading) {
     return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
 
+  const BillRow = ({ bill, compact = false }: { bill: any; compact?: boolean }) => {
+    const isOverdue = !bill.isPaid && bill.dueDay < todayDay;
+    const isDueToday = !bill.isPaid && bill.dueDay === todayDay;
+    const isDueSoon = !bill.isPaid && bill.dueDay > todayDay && bill.dueDay - todayDay <= 3;
+    return (
+      <div className={`flex items-center gap-3 ${compact ? "px-4 py-2" : "px-6 py-3"} transition-colors hover:bg-muted/30 ${bill.isPaid ? "opacity-50" : isOverdue ? "bg-red-500/5" : isDueToday ? "bg-yellow-500/5" : ""}`}>
+        <div className="w-8 text-center flex-shrink-0">
+          <span className={`font-mono text-base font-bold ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-muted-foreground"}`}>{bill.dueDay}</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`font-mono text-sm truncate ${bill.isPaid ? "line-through text-muted-foreground" : ""}`}>{bill.name}</p>
+          {!compact && (
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <span className="text-xs text-muted-foreground font-mono">{bill.category}</span>
+              {isOverdue && <span className="text-xs font-mono text-red-400 bg-red-500/10 px-1 rounded">OVERDUE</span>}
+              {isDueToday && <span className="text-xs font-mono text-yellow-400 bg-yellow-500/10 px-1 rounded">TODAY</span>}
+              {isDueSoon && <span className="text-xs font-mono text-orange-400 bg-orange-500/10 px-1 rounded">SOON</span>}
+            </div>
+          )}
+        </div>
+        <span className={`font-mono font-bold text-sm ${bill.isPaid ? "text-muted-foreground" : ""}`}>${bill.amount.toFixed(2)}</span>
+        <button onClick={() => togglePaid(bill.id, bill.isPaid)} className="text-muted-foreground hover:text-primary transition-colors flex-shrink-0">
+          {bill.isPaid ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Circle className="w-5 h-5" />}
+        </button>
+        {!compact && (
+          <>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary flex-shrink-0" onClick={() => openEdit(bill)}>
+              <Edit2 className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => deleteBill.mutate(bill.id)}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold font-mono tracking-tight uppercase">Bill Manager</h2>
           <p className="text-muted-foreground font-mono text-sm mt-1">
             Paid: <span className="text-green-400">${paidAmount.toFixed(2)}</span>
-            {" / "}
+            {" · "}
             Remaining: <span className="text-red-400">${remaining.toFixed(2)}</span>
-            {" / "}
+            {" · "}
             Total: <span className="text-primary">${totalAmount.toFixed(2)}</span>
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={openPaycheckSetup} className="font-mono text-xs uppercase tracking-wider">
+            <Settings2 className="h-4 w-4 mr-2" /> Paycheck Setup
+          </Button>
           <Button variant="outline" onClick={handleScan} className="font-mono text-xs uppercase tracking-wider">
             <ScanSearch className="h-4 w-4 mr-2" /> Detect Bills
           </Button>
@@ -218,169 +280,113 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card className="border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <Wallet className="h-4 w-4" />
-              Paycheck Windows
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {paycheckEdit ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label className="font-mono text-xs text-muted-foreground w-24">Check 1 Day</Label>
-                  <Input type="number" min="1" max="31" value={pcInput[0]} onChange={(e) => setPcInput([e.target.value, pcInput[1]])} className="font-mono bg-input border-border h-8 w-20 text-sm" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label className="font-mono text-xs text-muted-foreground w-24">Check 2 Day</Label>
-                  <Input type="number" min="1" max="31" value={pcInput[1]} onChange={(e) => setPcInput([pcInput[0], e.target.value])} className="font-mono bg-input border-border h-8 w-20 text-sm" />
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={savePaycheckDays} className="font-mono text-xs uppercase h-7">Save</Button>
-                  <Button size="sm" variant="outline" onClick={() => setPaycheckEdit(false)} className="font-mono text-xs uppercase h-7">Cancel</Button>
-                </div>
-              </div>
-            ) : (
-              <button onClick={() => { setPcInput([String(pc1), String(pc2)]); setPaycheckEdit(true); }} className="text-left w-full group">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-mono text-xs text-muted-foreground">Window 1 (Day {pc1}–{pc2 - 1})</span>
-                    <span className="font-mono font-bold text-sm">${window1Bills.reduce((s, b) => s + b.amount, 0).toFixed(2)}</span>
+      {/* Paycheck Planner */}
+      {paycheckConfigured ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[
+            { label: `Paycheck 1 — Day ${pc1}`, bills: window1Bills, color: "border-primary/30" },
+            { label: `Paycheck 2 — Day ${pc2}`, bills: window2Bills, color: "border-blue-500/30" },
+          ].map(({ label, bills: wBills, color }) => {
+            const wTotal = wBills.reduce((s, b) => s + b.amount, 0);
+            const wPaid = wBills.filter((b) => b.isPaid).reduce((s, b) => s + b.amount, 0);
+            return (
+              <Card key={label} className={`border-2 ${color}`}>
+                <CardHeader className="pb-2">
+                  <div className="flex justify-between items-start">
+                    <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{label}</CardTitle>
+                    <div className="text-right">
+                      <p className="font-mono font-bold text-lg">${wTotal.toFixed(2)}</p>
+                      <p className="text-xs font-mono text-green-400">${wPaid.toFixed(2)} paid</p>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="font-mono text-xs text-muted-foreground">Window 2 (Day {pc2}–31)</span>
-                    <span className="font-mono font-bold text-sm">${window2Bills.reduce((s, b) => s + b.amount, 0).toFixed(2)}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground group-hover:text-primary transition-colors">Tap to change paycheck days</p>
-                </div>
-              </button>
-            )}
+                </CardHeader>
+                <CardContent className="p-0">
+                  {wBills.length === 0 ? (
+                    <p className="text-xs font-mono text-muted-foreground px-4 pb-4">No bills in this window.</p>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {wBills.map((b) => <BillRow key={b.id} bill={b} compact />)}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <Card className="border-dashed border-2 border-border">
+          <CardContent className="flex flex-col items-center justify-center py-8 text-center gap-3">
+            <Settings2 className="w-8 h-8 text-muted-foreground" />
+            <p className="font-mono text-sm text-muted-foreground">Set up your paycheck days to see which bills come out of each paycheck.</p>
+            <Button variant="outline" onClick={openPaycheckSetup} className="font-mono text-xs uppercase">
+              Set Paycheck Days
+            </Button>
           </CardContent>
         </Card>
+      )}
 
-        <Card className="border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground">Coverage</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between font-mono text-sm">
-                <span className="text-muted-foreground">Total Bills</span>
-                <span>${totalAmount.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-mono text-sm">
-                <span className="text-muted-foreground">Paid</span>
-                <span className="text-green-400">${paidAmount.toFixed(2)}</span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-2 mt-3">
-                <div
-                  className="h-2 rounded-full bg-green-500 transition-all"
-                  style={{ width: totalAmount > 0 ? `${Math.min((paidAmount / totalAmount) * 100, 100)}%` : "0%" }}
-                />
-              </div>
-              <p className="text-xs font-mono text-muted-foreground text-right">
-                {totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 100) : 0}% paid
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* Full Bill Schedule */}
       <Card className="border-border">
         <CardHeader className="pb-2">
-          <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-            Bill Schedule — {selectedMonth}
-          </CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              All Bills — Sorted by Due Date
+            </CardTitle>
+            <span className="font-mono text-xs text-muted-foreground">{monthlyBills.length} total</span>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {monthlyBills.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground font-mono text-sm">
-              No bills tracked. Add bills manually or use Detect Bills.
+            <div className="text-center py-12 space-y-3">
+              <p className="text-muted-foreground font-mono text-sm">No bills tracked yet.</p>
+              <div className="flex justify-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleScan} className="font-mono text-xs uppercase">
+                  <ScanSearch className="h-3.5 w-3.5 mr-2" /> Detect Bills
+                </Button>
+                <Button size="sm" onClick={() => { setFormData(BLANK_FORM); setEditingId(null); setIsDialogOpen(true); }} className="font-mono text-xs uppercase">
+                  <Plus className="h-3.5 w-3.5 mr-2" /> Add Manually
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="divide-y divide-border">
-              {monthlyBills.map((bill) => {
-                const todayDay = new Date().getDate();
-                const isOverdue = !bill.isPaid && bill.dueDay < todayDay;
-                const isDueToday = !bill.isPaid && bill.dueDay === todayDay;
-                const isDueSoon = !bill.isPaid && bill.dueDay > todayDay && bill.dueDay - todayDay <= 3;
-                return (
-                <div key={bill.id} className={`flex items-center gap-3 px-6 py-3 transition-colors hover:bg-muted/30 ${bill.isPaid ? "opacity-50" : isOverdue ? "bg-red-500/5" : isDueToday ? "bg-yellow-500/5" : ""}`}>
-                  <div className="w-10 text-center">
-                    <span className={`font-mono text-lg font-bold ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-muted-foreground"}`}>{bill.dueDay}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-mono text-sm truncate ${bill.isPaid ? "line-through text-muted-foreground" : ""}`}>{bill.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-muted-foreground font-mono">{bill.isRecurring ? "Monthly" : selectedMonth}</span>
-                      <span className="text-xs text-muted-foreground">·</span>
-                      <span className="text-xs text-muted-foreground font-mono">{bill.category}</span>
-                      {isOverdue && <span className="text-xs font-mono text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">OVERDUE</span>}
-                      {isDueToday && <span className="text-xs font-mono text-yellow-400 bg-yellow-500/10 px-1.5 py-0.5 rounded">TODAY</span>}
-                      {isDueSoon && <span className="text-xs font-mono text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded">SOON</span>}
-                    </div>
-                  </div>
-                  <span className="font-mono font-bold text-sm">${bill.amount.toFixed(2)}</span>
-                  <button onClick={() => togglePaid(bill.id, bill.isPaid)} className="text-muted-foreground hover:text-primary transition-colors">
-                    {bill.isPaid ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Circle className="w-5 h-5" />}
-                  </button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={() => openEdit(bill)}>
-                    <Edit2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteBill.mutate(bill.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              );
-              })}
+              {monthlyBills.map((bill) => <BillRow key={bill.id} bill={bill} />)}
             </div>
           )}
         </CardContent>
       </Card>
 
+      {/* Detection Dialog */}
       <Dialog open={detectOpen} onOpenChange={setDetectOpen}>
-        <DialogContent className="sm:max-w-[500px] bg-card border-border max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[520px] bg-card border-border max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-mono uppercase text-primary tracking-wider text-sm">Detected Recurring Bills</DialogTitle>
-            <p className="text-xs text-muted-foreground font-mono">These merchants appeared consistently across multiple months. Select which to add.</p>
+            <DialogTitle className="font-mono uppercase text-primary tracking-wider text-sm">Detected Bills</DialogTitle>
+            <p className="text-xs text-muted-foreground font-mono mt-1">
+              Confirmed recurring are pre-selected. "Likely" bills appeared once — check before adding.
+            </p>
           </DialogHeader>
-          {suggestions.length === 0 ? (
-            <p className="text-sm font-mono text-muted-foreground py-4 text-center">No new recurring patterns found.</p>
-          ) : (
-            <div className="space-y-1 py-2">
-              <div className="flex justify-between text-xs font-mono text-muted-foreground uppercase px-1 pb-1 border-b border-border">
-                <span>Merchant</span>
-                <div className="flex gap-8 mr-2">
-                  <span>Day</span>
-                  <span>Amount</span>
-                </div>
-              </div>
-              {suggestions.map((s) => (
-                <label key={s.key} className="flex items-center gap-3 px-1 py-2 cursor-pointer hover:bg-muted/30 rounded">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(s.key)}
-                    onChange={(e) => {
-                      const next = new Set(selected);
-                      if (e.target.checked) next.add(s.key); else next.delete(s.key);
-                      setSelected(next);
-                    }}
-                    className="accent-primary"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-mono text-sm truncate">{s.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">Seen in {s.monthCount} months</p>
-                  </div>
-                  <span className="font-mono text-xs text-muted-foreground w-10 text-center">Day {s.dueDay}</span>
-                  <span className="font-mono font-bold text-sm w-20 text-right">${s.amount.toFixed(2)}</span>
-                </label>
-              ))}
+          <div className="space-y-1 py-2">
+            <div className="grid grid-cols-[auto,1fr,auto,auto] gap-x-3 text-xs font-mono text-muted-foreground uppercase px-1 pb-1 border-b border-border">
+              <span></span><span>Merchant</span><span className="text-center">Day</span><span className="text-right">Amount</span>
             </div>
-          )}
+            {suggestions.map((s) => (
+              <label key={s.key} className="grid grid-cols-[auto,1fr,auto,auto] gap-x-3 items-center px-1 py-2 cursor-pointer hover:bg-muted/30 rounded">
+                <input type="checkbox" checked={selected.has(s.key)}
+                  onChange={(e) => { const n = new Set(selected); e.target.checked ? n.add(s.key) : n.delete(s.key); setSelected(n); }}
+                  className="accent-primary w-4 h-4" />
+                <div className="min-w-0">
+                  <p className="font-mono text-sm truncate">{s.name}</p>
+                  <p className="text-xs font-mono text-muted-foreground">
+                    {s.confidence === "recurring" ? `Recurring · ${s.monthCount} months` : "Likely recurring · 1 month"}
+                  </p>
+                </div>
+                <span className="font-mono text-xs text-muted-foreground text-center">Day {s.dueDay}</span>
+                <span className="font-mono font-bold text-sm text-right">${s.amount.toFixed(2)}</span>
+              </label>
+            ))}
+          </div>
           <div className="flex justify-between items-center pt-2">
-            <button onClick={() => setSelected(selected.size === suggestions.length ? new Set() : new Set(suggestions.map(s => s.key)))}
+            <button onClick={() => setSelected(selected.size === suggestions.length ? new Set() : new Set(suggestions.map((s) => s.key)))}
               className="text-xs font-mono text-muted-foreground hover:text-primary transition-colors">
               {selected.size === suggestions.length ? "Deselect All" : "Select All"}
             </button>
@@ -395,6 +401,35 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         </DialogContent>
       </Dialog>
 
+      {/* Paycheck Setup Dialog */}
+      <Dialog open={paycheckOpen} onOpenChange={setPaycheckOpen}>
+        <DialogContent className="sm:max-w-[360px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-primary tracking-wider text-sm">Paycheck Setup</DialogTitle>
+            <p className="text-xs text-muted-foreground font-mono mt-1">Enter the day of month each paycheck arrives (1–31).</p>
+          </DialogHeader>
+          <div className="space-y-4 py-3">
+            <div className="grid gap-2">
+              <Label className="font-mono text-xs uppercase text-muted-foreground">First Paycheck — Day of Month</Label>
+              <Input type="number" min="1" max="31" placeholder="e.g. 1" value={pcInput[0]}
+                onChange={(e) => setPcInput([e.target.value, pcInput[1]])}
+                className="font-mono bg-input border-border text-lg" />
+            </div>
+            <div className="grid gap-2">
+              <Label className="font-mono text-xs uppercase text-muted-foreground">Second Paycheck — Day of Month</Label>
+              <Input type="number" min="1" max="31" placeholder="e.g. 15" value={pcInput[1]}
+                onChange={(e) => setPcInput([pcInput[0], e.target.value])}
+                className="font-mono bg-input border-border text-lg" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setPaycheckOpen(false)} className="font-mono text-xs uppercase h-8">Cancel</Button>
+            <Button onClick={savePaycheckDays} className="font-mono text-xs uppercase h-8">Save</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add / Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setFormData(BLANK_FORM); setEditingId(null); } }}>
         <DialogContent className="sm:max-w-[425px] bg-card border-border">
           <DialogHeader>
@@ -411,7 +446,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                 <Input type="number" step="0.01" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} className="font-mono bg-input border-border" />
               </div>
               <div className="grid gap-2">
-                <Label className="font-mono text-xs uppercase text-muted-foreground">Due Day</Label>
+                <Label className="font-mono text-xs uppercase text-muted-foreground">Due Day (1–31)</Label>
                 <Input type="number" min="1" max="31" value={formData.dueDay} onChange={(e) => setFormData({ ...formData, dueDay: e.target.value })} className="font-mono bg-input border-border" />
               </div>
             </div>
