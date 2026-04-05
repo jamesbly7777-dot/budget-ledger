@@ -14,6 +14,7 @@ import {
   Camera,
   Sparkles,
   X,
+  FileText,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -48,6 +49,7 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
   const [aiStage, setAiStage] = useState<"idle" | "uploading" | "analyzing" | "done">("idle");
   const [previewItems, setPreviewItems] = useState<ImportPreviewItem[]>([]);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewIsPdf, setPreviewIsPdf] = useState(false);
 
   const handleCSVChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -76,17 +78,20 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/gif"];
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/gif", "application/pdf"];
     if (!allowedTypes.includes(file.type)) {
       toast({
         variant: "destructive",
         title: "Unsupported file",
-        description: "Please upload a JPG, PNG, WebP, or HEIC image of your bank statement.",
+        description: "Please upload a PDF bank statement or a JPG/PNG/WebP screenshot.",
       });
       return;
     }
 
-    const objectUrl = URL.createObjectURL(file);
+    const isPdf = file.type === "application/pdf";
+    setPreviewIsPdf(isPdf);
+
+    const objectUrl = isPdf ? null : URL.createObjectURL(file);
     setPreviewImageUrl(objectUrl);
     setAiStage("uploading");
 
@@ -202,6 +207,7 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
         toast({ title: "Import Successful", description: `Saved ${toSave.length} transactions.` });
         setPreviewItems([]);
         setPreviewImageUrl(null);
+        setPreviewIsPdf(false);
         setAiStage("idle");
         setLocation("/ledger");
       },
@@ -215,6 +221,7 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
   const handleReset = () => {
     setPreviewItems([]);
     setPreviewImageUrl(null);
+    setPreviewIsPdf(false);
     setAiStage("idle");
   };
 
@@ -316,11 +323,11 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
                       <Camera className="w-7 h-7 text-muted-foreground" />
                     </div>
                     <p className="text-sm text-muted-foreground font-mono text-center max-w-xs">
-                      Take a screenshot of your bank's transaction list and upload it. AI will extract all transactions automatically.
+                      Upload a PDF bank statement or screenshot. AI will extract all transactions automatically.
                     </p>
                     <input
                       type="file"
-                      accept="image/jpeg,image/png,image/webp,image/heic,image/gif"
+                      accept="image/jpeg,image/png,image/webp,image/heic,image/gif,application/pdf"
                       className="hidden"
                       ref={aiInputRef}
                       onChange={handleAIImageChange}
@@ -330,10 +337,10 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
                       className="font-mono uppercase text-xs tracking-wider"
                     >
                       <Camera className="w-4 h-4 mr-2" />
-                      Upload Screenshot
+                      Upload Statement
                     </Button>
                     <p className="text-[10px] text-muted-foreground font-mono text-center opacity-60">
-                      Supports JPG, PNG, WebP, HEIC — uses AI credits
+                      Supports PDF, JPG, PNG, WebP, HEIC — uses AI credits
                     </p>
                   </>
                 )}
@@ -343,19 +350,29 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
         </div>
       ) : (
         <div className="space-y-4">
-          {previewImageUrl && (
+          {(previewImageUrl || previewIsPdf) && (
             <div className="flex items-center gap-3 bg-card border border-border rounded-lg p-3">
-              <img
-                src={previewImageUrl}
-                alt="Uploaded statement"
-                className="w-16 h-16 object-cover rounded border border-border"
-              />
+              {previewIsPdf ? (
+                <div className="w-16 h-16 rounded border border-border bg-secondary flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-8 h-8 text-primary" />
+                </div>
+              ) : (
+                <img
+                  src={previewImageUrl!}
+                  alt="Uploaded statement"
+                  className="w-16 h-16 object-cover rounded border border-border flex-shrink-0"
+                />
+              )}
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Source image</p>
-                <p className="text-sm font-medium mt-0.5">Bank statement screenshot</p>
+                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
+                  {previewIsPdf ? "Source PDF" : "Source image"}
+                </p>
+                <p className="text-sm font-medium mt-0.5">
+                  {previewIsPdf ? "Bank statement PDF" : "Bank statement screenshot"}
+                </p>
                 <p className="text-[11px] font-mono text-primary mt-1 flex items-center gap-1">
                   <Sparkles className="w-3 h-3" />
-                  Parsed with AI vision
+                  Parsed with AI
                 </p>
               </div>
             </div>

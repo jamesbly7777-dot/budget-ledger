@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import OpenAI from "openai";
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -19,7 +20,7 @@ const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
 });
 
-const SYSTEM_PROMPT = `You are a bank statement parser. Extract every transaction from the provided bank statement image or screenshot.
+const SYSTEM_PROMPT = `You are a bank statement parser. Extract every transaction from the provided bank statement.
 
 Return ONLY a valid JSON array (no markdown, no explanation) with this exact structure:
 [
@@ -55,31 +56,38 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
     let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
     if (mimetype === "application/pdf") {
-      res.status(415).json({
-        error: "PDF parsing not supported directly. Please take a screenshot of your bank statement and upload that instead.",
-        code: "PDF_NOT_SUPPORTED",
-      });
-      return;
+      const pdfData = await pdfParse(buffer);
+      const text = pdfData.text?.trim();
+      if (!text || text.length < 20) {
+        res.status(422).json({ error: "Could not extract text from this PDF. It may be a scanned image PDF — please try exporting it as a CSV from your bank instead." });
+        return;
+      }
+      logger.info({ chars: text.length }, "Extracted PDF text");
+      messages = [
+        {
+          role: "user",
+          content: `Extract all transactions from this bank statement text and return only the JSON array.\n\n---\n${text.slice(0, 12000)}`,
+        },
+      ];
+    } else {
+      const base64 = buffer.toString("base64");
+      const dataUrl = `data:${mimetype};base64,${base64}`;
+      messages = [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image_url",
+              image_url: { url: dataUrl, detail: "high" },
+            },
+            {
+              type: "text",
+              text: "Extract all transactions from this bank statement image. Return only the JSON array.",
+            },
+          ],
+        },
+      ];
     }
-
-    const base64 = buffer.toString("base64");
-    const dataUrl = `data:${mimetype};base64,${base64}`;
-
-    messages = [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image_url",
-            image_url: { url: dataUrl, detail: "high" },
-          },
-          {
-            type: "text",
-            text: "Extract all transactions from this bank statement image. Return only the JSON array.",
-          },
-        ],
-      },
-    ];
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
