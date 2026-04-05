@@ -23,10 +23,13 @@ interface SuggestedBill {
 function normalizeName(name: string): string {
   return name
     .toLowerCase()
-    .replace(/[*#@]/g, "")
-    .replace(/\d{4,}/g, "")
+    .replace(/[^a-z ]/g, " ")   // strip everything except letters and spaces
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .split(" ")
+    .filter((w) => w.length > 2) // drop noise words like "co", "of", "at"
+    .slice(0, 4)                 // keep first 4 meaningful words
+    .join(" ");
 }
 
 function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
@@ -48,18 +51,20 @@ function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
     const uniqueMonths = new Set(txs.map((t) => t.month));
 
     if (uniqueMonths.size >= 2) {
-      // Multi-month: strict recurring detection
+      // Multi-month: recurring detection
       const days = txs.map((t) => parseInt(t.date.split("/")[1] ?? "1", 10)).filter((d) => d >= 1 && d <= 31);
       if (!days.length) continue;
       const avgDay = days.reduce((a, b) => a + b, 0) / days.length;
+      // Allow up to 8 days of variation (billing can shift for weekends/holidays)
       const dayStdDev = Math.sqrt(days.reduce((s, d) => s + (d - avgDay) ** 2, 0) / days.length);
-      if (dayStdDev > 6) continue;
+      if (dayStdDev > 8) continue;
 
       const amounts = txs.map((t) => t.amount);
       const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
       if (avgAmount < 10) continue;
+      // Allow up to 50% amount variance (utility bills fluctuate significantly)
       const amtStdDev = Math.sqrt(amounts.reduce((s, a) => s + (a - avgAmount) ** 2, 0) / amounts.length);
-      if (amtStdDev / avgAmount > 0.3) continue;
+      if (amtStdDev / avgAmount > 0.5) continue;
 
       const nameCounts: Record<string, number> = {};
       txs.forEach((t) => { nameCounts[t.name] = (nameCounts[t.name] ?? 0) + 1; });
@@ -70,9 +75,10 @@ function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
 
       suggestions.push({ key, name: bestName, amount: Math.round(avgAmount * 100) / 100, dueDay: Math.round(avgDay), category: bestCat, monthCount: uniqueMonths.size, confidence: "recurring" });
     } else {
-      // Single month: suggest Bills-category or high-amount transactions as likely recurring
+      // Single month: suggest Bills-category or any expense ≥ $15 as likely recurring
       const tx = txs[0];
-      if (tx.category !== "Bills" && tx.amount < 30) continue;
+      if (tx.category === "Transfers") continue;
+      if (tx.amount < 15) continue;
       const dueDay = parseInt(tx.date.split("/")[1] ?? "1", 10);
       if (dueDay < 1 || dueDay > 31) continue;
       suggestions.push({ key, name: tx.name, amount: tx.amount, dueDay, category: tx.category, monthCount: 1, confidence: "likely" });
@@ -109,6 +115,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const [suggestions, setSuggestions] = useState<SuggestedBill[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [addingAll, setAddingAll] = useState(false);
+  const [scanStats, setScanStats] = useState<{ total: number; months: number } | null>(null);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -145,14 +152,18 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       toast({ description: "Import transactions first to scan for recurring bills." });
       return;
     }
+    const uniqueMonths = new Set(allTxs.map((t) => t.month)).size;
     const existingKeys = new Set((bills || []).map((b) => normalizeName(b.name)));
     const found = detectRecurringBills(allTxs).filter((s) => !existingKeys.has(s.key));
     if (found.length === 0) {
-      toast({ description: "No new bill patterns found. Try adding bills manually." });
+      toast({
+        description: `Scanned ${allTxs.length} transactions across ${uniqueMonths} month${uniqueMonths !== 1 ? "s" : ""}. No new bill patterns found — try adding bills manually.`,
+      });
       return;
     }
     setSuggestions(found);
-    setSelected(new Set(found.filter(s => s.confidence === "recurring").map((s) => s.key)));
+    setScanStats({ total: allTxs.length, months: uniqueMonths });
+    setSelected(new Set(found.filter((s) => s.confidence === "recurring").map((s) => s.key)));
     setDetectOpen(true);
   };
 
@@ -361,9 +372,13 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         <DialogContent className="sm:max-w-[520px] bg-card border-border max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-mono uppercase text-primary tracking-wider text-sm">Detected Bills</DialogTitle>
-            <p className="text-xs text-muted-foreground font-mono mt-1">
-              Confirmed recurring are pre-selected. "Likely" bills appeared once — check before adding.
-            </p>
+            {scanStats && (
+              <p className="text-xs text-muted-foreground font-mono mt-1">
+                Scanned <span className="text-primary">{scanStats.total}</span> transactions across{" "}
+                <span className="text-primary">{scanStats.months}</span> month{scanStats.months !== 1 ? "s" : ""}.
+                {" "}Confirmed recurring are pre-selected. "Likely" items appeared once — review before adding.
+              </p>
+            )}
           </DialogHeader>
           <div className="space-y-1 py-2">
             <div className="grid grid-cols-[auto,1fr,auto,auto] gap-x-3 text-xs font-mono text-muted-foreground uppercase px-1 pb-1 border-b border-border">
