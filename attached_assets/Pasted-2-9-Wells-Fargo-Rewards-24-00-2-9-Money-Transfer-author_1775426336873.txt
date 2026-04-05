@@ -1,0 +1,653 @@
+2/9   Wells Fargo Rewards  24.00          
+2/9   Money Transfer authorized on 02/06 From Gd-Amazon 
+Gd-Amazon CA P000000286215743 Card 0590  
+62.50          
+2/9   Money Transfer authorized on 02/06 From Bly James OK 
+P000000853087329 Card 0590  
+57.00          
+2/9   Money Transfer authorized on 02/07 From Gd-Amazon 
+Gd-Amazon CA P000000959161815 Card 0590  
+13.50          
+2/9   Money Transfer authorized on 02/07 From Gd-Amazon 
+Gd-Amazon CA P000000457300595 Card 0590  
+77.50          
+2/9   Money Transfer authorized on 02/07 From Gd-Amazon 
+Gd-Amazon CA P000000287708320 Card 0590  
+13.50          
+2/9   Money Transfer authorized on 02/07 From Gd-Amazon 
+Gd-Amazon CA P000000354518781 Card 0590  
+20.00          
+2/9   Money Transfer authorized on 02/08 From Gd-Amazon 
+Gd-Amazon CA P000000589222758 Card 0590  
+114.50          
+2/9   Money Transfer authorized on 02/08 From Gd-Amazon 
+Gd-Amazon CA P000000752992915 Card 0590  
+20.00          
+2/9   Money Transfer authorized on 02/08 From Bly James OK 
+P000000556028236 Card 0590  
+81.00          
+2/9   Money Transfer authorized on 02/08 From Gd-Amazon 
+Gd-Amazon CA P000000752116647 Card 0590  
+20.00          
+2/9   Money Transfer authorized on 02/09 From Gd-Amazon 
+Gd-Amazon CA P000000555516454 Card 0590  
+40.93          
+2/9   Money Transfer authorized on 02/05 Dave Inc Dave.Com CA 
+S306037250882011 Card 0590  
+   106.50       
+2/9   Purchase authorized on 02/06 Hobby Lobby Vendin San 
+Antonio TX S386037709603704 Card 0590  
+   1.25       
+2/9   Purchase authorized on 02/06 Hobby Lobby Vendin San 
+Antonio TX S306037712148903 Card 0590  
+   0.75       
+2/9   Purchase authorized on 02/06 Shell Service Station Purcell OK 
+P386038109121848 Card 0590  
+   7.68       
+2/9   Purchase authorized on 02/07 Oklahoma Motor Cre 
+405-5827100 OK S466038324633565 Card 0590  
+   290.00       
+2/9   Purchase authorized on 02/07 Love's #0211 Insid Oklahoma 
+City OK S356038355935692 Card 0590  
+   9.44       
+2/9   Purchase authorized on 02/07 Hop & Sack #24 Dibble OK 
+S466038459699325 Card 0590  
+   3.16       
+2/9   Purchase authorized on 02/07 Oncue 143 Oklahoma City OK 
+P000000754373661 Card 0590  
+   29.18       
+2/9   Purchase authorized on 02/08 Love's #0211 Insid Oklahoma 
+City OK S386039814173119 Card 0590  
+   8.61       
+2/9   Online Transfer Ref #Ib0Wsb6Kk6 to Wells Fargo Active Cash 
+VISA Card Xxxxxxxxxxxx9697 on 02/09/26  
+   80.00       
+2/9   Purchase authorized on 02/09 Sehz414680001 Oklahoma City 
+OK P000000981177259 Card 0590  
+   26.11       
+2/9   Walmart.Com Walmart 260205 031101119497227 Bly James     48.81       
+2/9   Affirm Inc Affirm Pay 260207 3339837 James *Bly     25.00       
+2/9   Dave Davesubfee 260209 
+0B145140056611F1918A5Bb32Cdf99D3  
+   1.00       
+March 6, 2026          Page 3 of 11 
+Transaction History (continued) 
+ Date 
+Check 
+Number Description 
+Deposits/ 
+Additions 
+Withdrawals/ 
+Subtractions 
+Ending daily 
+balance 
+2/9   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     10.00    987.41    
+2/10   Money Transfer authorized on 02/09 From Gd-Amazon 
+Gd-Amazon CA P000000580554128 Card 0590  
+61.00          
+2/10   Money Transfer authorized on 02/09 From Bly James OK 
+P000000280894998 Card 0590  
+22.00          
+2/10   Purchase authorized on 02/09 Amazon RETA* of2Eg 
+WWW.Amazon.CO WA S306040511636082 Card 0590  
+   41.44       
+2/10   Purchase authorized on 02/09 McDonald's F3033 Oklahoma 
+City OK S356041163858200 Card 0590  
+   7.92       
+2/10   Synchrony Bank Payment Feb 10 601918391939425 Bly,James     30.00       
+2/10   Affirm Inc Affirm Pay 260209 4012657 James *Bly     30.00       
+2/10   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     2.00    959.05    
+2/11   Money Transfer authorized on 02/11 From Gd-Amazon 
+Gd-Amazon CA P000000352332415 Card 0590  
+14.50          
+2/11   Purchase authorized on 02/09 Office Depot #83 Oklahoma City 
+OK S346041017666782 Card 0590  
+   1.67       
+2/11   Recurring Payment authorized on 02/10 Netflix.Com 
+408-5403700 CA S466041362166614 Card 0590  
+   26.49       
+2/11   Purchase authorized on 02/10 Hobby Lobby Vendin San 
+Antonio TX S346041542447932 Card 0590  
+   2.00       
+2/11   Purchase authorized on 02/10 Subway 55614 Oklahoma City 
+OK S306041634141410 Card 0590  
+   10.47       
+2/11   Purchase authorized on 02/10 Hobby Lobby Vendin San 
+Antonio TX S386041709898210 Card 0590  
+   0.75       
+2/11   Purchase authorized on 02/11 Sami's Oklahoma City OK 
+P000000385933056 Card 0590  
+   15.06       
+2/11   WF Loan/Line Auto Pay 260210 xxxxxxx79790001 Bly James K 
+661  
+   181.39       
+2/11   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     5.00    730.72    
+2/12   Money Transfer authorized on 02/12 From Gd-Amazon 
+Gd-Amazon CA P000000382705734 Card 0590  
+71.50          
+2/12   Money Transfer authorized on 02/12 From James Bly OK 
+S586043549309233 Card 0590  
+4.75          
+2/12   Money Transfer authorized on 02/12 From Gd-Amazon 
+Gd-Amazon CA P000000854307304 Card 0590  
+17.50          
+2/12   Recurring Payment authorized on 02/09 Google *Chatgpt 
+855-836-3987 CA S386040307937252 Card 0590  
+   21.19       
+2/12   Purchase authorized on 02/10 Amazon Mktpl*Yj6Sr 
+Amzn.Com/Bill WA S386042134622678 Card 0590  
+   42.03       
+2/12   Purchase authorized on 02/11 Hobby Lobby Vendin San 
+Antonio TX S356042710456590 Card 0590  
+   1.25       
+2/12   Purchase authorized on 02/11 Sak N Go Oklahoma City OK 
+P000000755780670 Card 0590  
+   8.06       
+2/12   Purchase authorized on 02/12 Oncue 143 Oklahoma City OK 
+P000000782560288 Card 0590  
+   28.19       
+2/12   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     4.00    719.75    
+2/13   Money Transfer authorized on 02/12 From Gd-Amazon 
+Gd-Amazon CA P000000559529707 Card 0590  
+14.50          
+2/13   Money Transfer authorized on 02/13 From Gd-Amazon 
+Gd-Amazon CA P000000389285743 Card 0590  
+38.00          
+2/13   Recurring Payment authorized on 02/11 Google *Google One 
+855-836-3987 CA S346042664520807 Card 0590  
+   2.11       
+2/13   Purchase authorized on 02/12 Hobby Lobby Vendin San 
+Antonio TX S386043541035934 Card 0590  
+   2.00       
+2/13   Purchase authorized on 02/12 Domino's 6429 405-730-9003 
+OK S466044037792250 Card 0590  
+   18.00       
+2/13   Online Transfer Ref #Ib0Wtqsjrr to Wells Fargo Active Cash VISA 
+Card Xxxxxxxxxxxx9697 on 02/13/26  
+   150.00       
+2/13   Purchase authorized on 02/13 USPS PO 39613500 3022 W I 
+Oklahoma City OK P306044670941147 Card 0590  
+   11.95       
+2/13   IRS Usataxpymt 021326 240644405876600 James K Bly     150.00       
+2/13   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     3.00    435.19    
+2/17   Money Transfer authorized on 02/14 From Gd-Amazon 
+Gd-Amazon CA P000000050092639 Card 0590  
+20.50          
+March 6, 2026          Page 4 of 11 
+Transaction History (continued) 
+ Date 
+Check 
+Number Description 
+Deposits/ 
+Additions 
+Withdrawals/ 
+Subtractions 
+Ending daily 
+balance 
+2/17   Money Transfer authorized on 02/14 From Gd-Amazon 
+Gd-Amazon CA P000000986905988 Card 0590  
+27.50          
+2/17   Money Transfer authorized on 02/14 From Gd-Amazon 
+Gd-Amazon CA P000000685229736 Card 0590  
+63.50          
+2/17   Money Transfer authorized on 02/14 From Gd-Amazon 
+Gd-Amazon CA P000000952461849 Card 0590  
+21.50          
+2/17   Money Transfer authorized on 02/14 From Gd-Amazon 
+Gd-Amazon CA P000000851578364 Card 0590  
+14.00          
+2/17   Money Transfer authorized on 02/14 From Gd-Amazon 
+Gd-Amazon CA P000000051558922 Card 0590  
+121.10          
+2/17   Money Transfer authorized on 02/14 From Gd-Amazon 
+Gd-Amazon CA P000000785006247 Card 0590  
+48.13          
+2/17   Money Transfer authorized on 02/15 From Gd-Amazon 
+Gd-Amazon CA P000000382289613 Card 0590  
+90.50          
+2/17   Money Transfer authorized on 02/16 From Gd-Amazon 
+Gd-Amazon CA P000000984805442 Card 0590  
+76.50          
+2/17   Online Transfer From Bly J Way2Save Savings xxxxxx3037 Ref 
+#Ib0Wvllg4K on 02/14/26  
+30.00          
+2/17   Purchase authorized on 02/12 Office Depot #83 Oklahoma City 
+OK S306044031732818 Card 0590  
+   3.35       
+2/17   Purchase authorized on 02/13 Office Depot #2252 Oklahoma 
+City OK S586044657167921 Card 0590  
+   2.39       
+2/17   Purchase authorized on 02/14 Oncue 135 Oklahoma City OK 
+P000000485992250 Card 0590  
+   5.70       
+2/17   Purchase authorized on 02/14 Oncue 135 Oklahoma City OK 
+P000000153216506 Card 0590  
+   29.93       
+2/17   Money Transfer authorized on 02/14 Cash App*K C Oakland CA 
+S466045707398785 Card 0590  
+   20.00       
+2/17   Purchase authorized on 02/14 Love's #0211 Insid Oklahoma 
+City OK S586045831003498 Card 0590  
+   7.59       
+2/17   Purchase authorized on 02/14 047 Braums Store Edmond OK 
+S306046122148044 Card 0590  
+   4.54       
+2/17   Online Transfer Ref #Ib0Wvllfkm to Wells Fargo Reflect VISA 
+Card Xxxxxxxxxxxx4233 on 02/14/26  
+   75.00       
+2/17   Purchase authorized on 02/15 WM Supercenter #564 
+Oklahoma City OK P000000757086928 Card 0590  
+   111.93       
+2/17   Recurring Payment authorized on 02/15 Flexible Finance NEW 
+York NY S346046663954520 Card 0590  
+   14.99       
+2/17   Purchase authorized on 02/16 Sehz414680001 Oklahoma City 
+OK P000000285637811 Card 0590  
+   35.03       
+2/17   Purchase authorized on 02/16 Hobby Lobby Vendin San 
+Antonio TX S306047795529268 Card 0590  
+   1.00       
+2/17   Planet Fitness O Iclub Fees PR2604409495288 4056971750     21.75       
+2/17   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     10.00    605.22    
+2/18   Money Transfer authorized on 02/17 From Gd-Amazon 
+Gd-Amazon CA P000000580269771 Card 0590  
+73.00          
+2/18   Money Transfer authorized on 02/18 From Gd-Amazon 
+Gd-Amazon CA P000000784783336 Card 0590  
+13.50          
+2/18   Purchase authorized on 02/15 Teds Cafe Escondid Edmond OK 
+S586046777647034 Card 0590  
+   80.06       
+2/18   Purchase authorized on 02/17 Integris Web Payme Oklahoma 
+City OK S306048360673068 Card 0590  
+   98.00       
+2/18   Purchase authorized on 02/17 Southwest Orthopae Oklahoma 
+City OK S386048376388264 Card 0590  
+   27.79       
+2/18   Recurring Payment authorized on 02/17 Code* Trial Pro Li 
+Codecademy.CO NY S346048418863124 Card 0590  
+   29.99       
+2/18   Purchase authorized on 02/17 Amazon Mktpl*Hd968 
+Amzn.Com/Bill WA S356048455458737 Card 0590  
+   7.68       
+2/18   Purchase authorized on 02/17 Amazon RETA* B13Dw 
+WWW.Amazon.CO WA S306048455486383 Card 0590  
+   41.62       
+2/18   Recurring Payment authorized on 02/17 Pyrvia Amazon Flex 
+Pyrvia.Com CA S306048858320966 Card 0590  
+   40.00       
+2/18   Purchase authorized on 02/18 Qt 7011 Outside Moore OK 
+P346050058769110 Card 0590  
+   25.41       
+March 6, 2026          Page 5 of 11 
+Transaction History (continued) 
+ Date 
+Check 
+Number Description 
+Deposits/ 
+Additions 
+Withdrawals/ 
+Subtractions 
+Ending daily 
+balance 
+2/18   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     6.00    335.17    
+2/19   Money Transfer authorized on 02/19 From Gd-Amazon 
+Gd-Amazon CA P000000489792999 Card 0590  
+73.00          
+2/19   Money Transfer authorized on 02/19 From Gd-Amazon 
+Gd-Amazon CA P000000081943561 Card 0590  
+29.50          
+2/19   Money Transfer authorized on 02/19 Cash App*K C Oakland CA 
+S356050380242596 Card 0590  
+   50.00       
+2/19   Walmart.Com Purchase 260217 031101111959431 Bly James     23.89       
+2/19   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     1.00    362.78    
+2/20   Money Transfer authorized on 02/19 From Gd-Amazon 
+Gd-Amazon CA P000000755275210 Card 0590  
+53.50          
+2/20   Hobby Lobby Stor PR Dir Dep James K Bly  918.52          
+2/20   Money Transfer authorized on 02/20 From James Bly CA 
+S586051546009321 Card 0590  
+50.00          
+2/20   Recurring Payment authorized on 02/19 Walmart+ Member 
+02 800-966-6546 AR S346050661409326 Card 0590  
+   12.95       
+2/20   Purchase authorized on 02/19 Hobby Lobby Vendin San 
+Antonio TX S306050714570158 Card 0590  
+   0.75       
+2/20   Purchase authorized on 02/19 Hobby Lobby Vendin San 
+Antonio TX S386050715517187 Card 0590  
+   1.25       
+2/20   Purchase authorized on 02/19 Pikepass on-Line 800-745-3727 
+OK S586050800107488 Card 0590  
+   20.00       
+2/20   Purchase authorized on 02/19 Og&E/Uspaymentsbil 
+877-306-9274 OK S586051003348140 Card 0590  
+   171.49       
+2/20   Affirm Inc Affirm Pay 260219 7307350 James *Bly     50.00       
+2/20   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     4.00    1,124.36    
+2/23   Money Transfer authorized on 02/21 From Gd-Amazon 
+Gd-Amazon CA P000000683320321 Card 0590  
+97.50          
+2/23   Money Transfer authorized on 02/21 From Gd-Amazon 
+Gd-Amazon CA P000000054383399 Card 0590  
+20.00          
+2/23   Money Transfer authorized on 02/21 From Gd-Amazon 
+Gd-Amazon CA P000000955528373 Card 0590  
+111.96          
+2/23   Money Transfer authorized on 02/22 From Gd-Amazon 
+Gd-Amazon CA P000000954763098 Card 0590  
+94.00          
+2/23   Money Transfer authorized on 02/22 From Bly James OK 
+P000000686384762 Card 0590  
+86.00          
+2/23   Money Transfer authorized on 02/22 From Bly James OK 
+P000000252085167 Card 0590  
+48.00          
+2/23   Money Transfer authorized on 02/23 From Gd-Amazon 
+Gd-Amazon CA P000000980671787 Card 0590  
+53.50          
+2/23   Money Transfer authorized on 02/23 From Gd-Amazon 
+Gd-Amazon CA P000000259795474 Card 0590  
+13.50          
+2/23   Money Transfer authorized on 02/23 From Gd-Amazon 
+Gd-Amazon CA P000000084195630 Card 0590  
+14.50          
+2/23   Money Transfer authorized on 02/19 Dave Inc Dave.Com CA 
+S586051264553285 Card 0590  
+   81.12       
+2/23   Purchase authorized on 02/20 Hobby Lobby Vendin San 
+Antonio TX S306051717892349 Card 0590  
+   0.75       
+2/23   Purchase authorized on 02/20 Hobby Lobby Vendin San 
+Antonio TX S386051718304336 Card 0590  
+   1.00       
+2/23   Purchase authorized on 02/20 Sq *Fresh Clips Oklahoma City 
+OK S356051810864029 Card 0590  
+   38.00       
+2/23   Purchase authorized on 02/20 Freddy's 02-0022 Oklahoma City 
+OK S466051818935394 Card 0590  
+   15.84       
+2/23   Purchase authorized on 02/20 Qt 7011 Inside Moore OK 
+S356052146332342 Card 0590  
+   6.64       
+2/23   Purchase authorized on 02/21 Love's #0211 Outside Oklahoma 
+City OK P586052408297212 Card 0590  
+   24.90       
+2/23   Online Transfer Ref #Ib0Wxvt543 to Wells Fargo Active Cash 
+VISA Card Xxxxxxxxxxxx9697 on 02/21/26  
+   50.00       
+2/23   Purchase authorized on 02/21 Wal-Mart #0564 Oklahoma City 
+OK P000000485637529 Card 0590  
+   76.64       
+2/23   Recurring Payment authorized on 02/21 Flex Finance 
+Getflex.Com NY S586052615548394 Card 0590  
+   378.25       
+March 6, 2026          Page 6 of 11 
+Transaction History (continued) 
+ Date 
+Check 
+Number Description 
+Deposits/ 
+Additions 
+Withdrawals/ 
+Subtractions 
+Ending daily 
+balance 
+2/23   Purchase authorized on 02/21 Oklahoma Motor Cre 
+405-5827100 OK S386052808524191 Card 0590  
+   290.00       
+2/23   Purchase authorized on 02/22 Sehz414130001 Oklahoma City 
+OK P000000754861372 Card 0590  
+   21.63       
+2/23   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     10.00    668.55    
+2/24   Money Transfer authorized on 02/23 From Gd-Amazon 
+Gd-Amazon CA P000000483626122 Card 0590  
+4.67          
+2/24   Money Transfer authorized on 02/24 From Gd-Amazon 
+Gd-Amazon CA P000000555685976 Card 0590  
+13.50          
+2/24   Recurring Payment authorized on 02/21 Google *Coursera G 
+G.CO/Helppay# CA S386052340863789 Card 0590  
+   63.59       
+2/24   Recurring Payment authorized on 02/23 Amazon 
+Prime*621Rx Amzn.Com/Bill WA S386054468715505 Card 
+0590  
+   14.99       
+2/24   Purchase authorized on 02/23 Hobby Lobby Vendin San 
+Antonio TX S306054706775524 Card 0590  
+   0.75       
+2/24   Money Transfer authorized on 02/23 Cash App*K C Oakland CA 
+S466054841249214 Card 0590  
+   30.00       
+2/24   Purchase authorized on 02/24 Qt 7011 Outside Moore OK 
+P386055367573496 Card 0590  
+   27.15       
+2/24   Purchase authorized on 02/24 Sehz414680001 Oklahoma City 
+OK P000000853960261 Card 0590  
+   8.93       
+2/24   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     4.00    537.31    
+2/25   Money Transfer authorized on 02/24 From Bly James OK 
+P000000289821463 Card 0590  
+17.00          
+2/25   Money Transfer authorized on 02/24 From Gd-Amazon 
+Gd-Amazon CA P000000254212379 Card 0590  
+53.50          
+2/25   Purchase authorized on 02/23 Amazon Mktpl*Wx0Zj 
+Amzn.Com/Bill WA S356055219718887 Card 0590  
+   54.49       
+2/25   Purchase authorized on 02/24 Hobby Lobby Vendin San 
+Antonio TX S386055700365441 Card 0590  
+   1.00       
+2/25   Verizon Wireless Payments 260224 058946950800001 
+0000000058946950800001  
+   94.42       
+2/25   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     2.00    455.90    
+2/26   Money Transfer authorized on 02/25 From Gd-Amazon 
+Gd-Amazon CA P000000252731184 Card 0590  
+18.32          
+2/26   Money Transfer authorized on 02/25 From Gd-Amazon 
+Gd-Amazon CA P000000450676990 Card 0590  
+67.00          
+2/26   Money Transfer authorized on 02/26 From Gd-Amazon 
+Gd-Amazon CA P000000354695976 Card 0590  
+14.50          
+2/26   Purchase authorized on 02/24 Qt 7011 Inside Moore OK 
+S586055369259354 Card 0590  
+   9.03       
+2/26   Purchase authorized on 02/25 Wal-Mart #0564 Oklahoma City 
+OK P000000785806682 Card 0590  
+   40.20       
+2/26   Purchase authorized on 02/26 Love's #0211 Outside Oklahoma 
+City OK P386058059196428 Card 0590  
+   27.67       
+2/26   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     3.00    475.82    
+2/27   Money Transfer authorized on 02/26 From Gd-Amazon 
+Gd-Amazon CA P000000387141615 Card 0590  
+64.50          
+2/27   Purchase authorized on 02/25 Amazon RETA* B9160 
+WWW.Amazon.CO WA S306057284071707 Card 0590  
+   28.24       
+2/27   Recurring Payment authorized on 02/26 Experian* Credit R 
+479-3436237 CA S466057373317209 Card 0590  
+   24.99       
+2/27   Purchase authorized on 02/26 Hobby Lobby Vendin San 
+Antonio TX S386057456289437 Card 0590  
+   1.00       
+2/27   Purchase authorized on 02/26 Hobby Lobby Vendin San 
+Antonio TX S346057459383131 Card 0590  
+   1.50       
+2/27   Purchase authorized on 02/26 Hobby Lobby Vendin San 
+Antonio TX S586057462466886 Card 0590  
+   1.00       
+2/27   Purchase authorized on 02/26 Southwest Orthopae Oklahoma 
+City OK S346057703908892 Card 0590  
+   35.00       
+2/27   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     5.00    443.59    
+3/2   Money Transfer authorized on 02/28 From Bly James OK 
+P000000450900338 Card 0590  
+33.00          
+March 6, 2026          Page 7 of 11 
+Transaction History (continued) 
+ Date 
+Check 
+Number Description 
+Deposits/ 
+Additions 
+Withdrawals/ 
+Subtractions 
+Ending daily 
+balance 
+3/2   Money Transfer authorized on 02/28 From Gd-Amazon 
+Gd-Amazon CA P000000387057389 Card 0590  
+80.50          
+3/2   Money Transfer authorized on 02/28 From Gd-Amazon 
+Gd-Amazon CA P000000385086745 Card 0590  
+107.50          
+3/2   Money Transfer authorized on 02/28 From Bly James OK 
+P000000157298718 Card 0590  
+40.00          
+3/2   Money Transfer authorized on 02/28 From Gd-Amazon 
+Gd-Amazon CA P000000552635852 Card 0590  
+23.00          
+3/2   Money Transfer authorized on 02/28 From Gd-Amazon 
+Gd-Amazon CA P000000482198516 Card 0590  
+51.50          
+3/2   Money Transfer authorized on 02/28 From Gd-Amazon 
+Gd-Amazon CA P000000686483754 Card 0590  
+22.68          
+3/2   Money Transfer authorized on 03/01 From Gd-Amazon 
+Gd-Amazon CA P000000350839758 Card 0590  
+82.00          
+3/2   Money Transfer authorized on 03/01 From Gd-Amazon 
+Gd-Amazon CA P000000280942672 Card 0590  
+89.00          
+3/2   Money Transfer authorized on 03/01 From Gd-Amazon 
+Gd-Amazon CA P000000650136813 Card 0590  
+87.00          
+3/2   Money Transfer authorized on 03/01 From Bly James OK 
+P000000955126023 Card 0590  
+71.00          
+3/2   Online Transfer From Bly J Way2Save Savings xxxxxx3037 Ref 
+#Ib0x2Kh8My on 02/28/26  
+40.00          
+3/2   Purchase authorized on 02/27 Ysi*Waters Edge 918-4921983 
+OK S386058758725981 Card 0590  
+   65.11       
+3/2   Purchase authorized on 02/27 Cox Oklahoma Comm 
+800-234-3993 OK S356058761083848 Card 0590  
+   50.00       
+3/2   Recurring Payment authorized on 02/28 Pyrvia Amazon Flex 
+Pyrvia.Com CA S306059350076702 Card 0590  
+   25.00       
+3/2   Purchase authorized on 02/28 Stella Grocery Newalla OK 
+P346059656343567 Card 0590  
+   8.06       
+3/2   Purchase authorized on 03/01 Club Car Wash Edmo Edmond OK 
+S386060408519509 Card 0590  
+   15.00       
+3/2   Purchase authorized on 03/01 Oncue 143 Oklahoma City OK 
+P000000780627763 Card 0590  
+   32.16       
+3/2   Purchase authorized on 03/01 Rockys Place Choctaw OK 
+P000000781268280 Card 0590  
+   10.22       
+3/2   Recurring Payment authorized on 03/01 Flex Finance 
+Getflex.Com NY S466060547432501 Card 0590  
+   378.25       
+3/2   Purchase authorized on 03/02 Sehz414680001 Oklahoma City 
+OK P000000759284067 Card 0590  
+   34.45       
+3/2   Purchase authorized on 03/02 Oncue 143 Oklahoma City OK 
+P000000281637526 Card 0590  
+   10.69       
+3/2   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     8.00    533.83    
+3/3   Money Transfer authorized on 03/02 From Bly James OK 
+P000000556811914 Card 0590  
+33.00          
+3/3   Purchase authorized on 03/01 Popeyes 05761 Oklahoma City 
+OK S386060662251866 Card 0590  
+   10.85       
+3/3   Purchase authorized on 03/02 Hobby Lobby Vendin San 
+Antonio TX S386061541693524 Card 0590  
+   1.50       
+3/3   Recurring Payment authorized on 03/02 Google *Gridwise G 
+G.CO/Helppay# CA S306061757365683 Card 0590  
+   10.59       
+3/3   Money Transfer authorized on 03/02 Cash App*K C Oakland CA 
+S466062019173030 Card 0590  
+   110.00       
+3/3   Prog Direct Ins Ins Prem 260302 xxxxx4789 James James K Bly     207.19       
+3/3   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     3.00    223.70    
+3/4   Money Transfer authorized on 03/04 From Gd-Amazon 
+Gd-Amazon CA P000000389342742 Card 0590  
+94.00          
+3/4   Purchase authorized on 03/02 Qt 7011 Inside Moore OK 
+S346062039316219 Card 0590  
+   3.73       
+3/4   Purchase authorized on 03/03 Hobby Lobby Vendin San 
+Antonio TX S346062711469477 Card 0590  
+   0.75       
+3/4   Purchase authorized on 03/03 Amazon RETA* Be7R7 
+WWW.Amazon.CO WA S466062739638843 Card 0590  
+   32.78       
+March 6, 2026          Page 8 of 11 
+Transaction History (continued) 
+ Date 
+Check 
+Number Description 
+Deposits/ 
+Additions 
+Withdrawals/ 
+Subtractions 
+Ending daily 
+balance 
+3/4   Purchase authorized on 03/04 Oncue 143 Oklahoma City OK 
+P000000955485879 Card 0590  
+   3.74       
+3/4   Purchase authorized on 03/04 Oncue 143 Oklahoma City OK 
+P000000183716350 Card 0590  
+   6.63       
+3/4   Purchase authorized on 03/04 Walgreens Store 2835 SW 2 
+Oklahoma City OK P306063613682837 Card 0590  
+   76.50       
+3/4   Purchase authorized on 03/04 Walgreens Store 2835 SW 2 
+Oklahoma City OK P586063615266890 Card 0590  
+   8.32       
+3/4   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     7.00    178.25    
+3/5   Money Transfer authorized on 03/04 From Gd-Amazon 
+Gd-Amazon CA P000000085412660 Card 0590  
+64.50          
+3/5   Recurring Payment authorized on 03/04 Lemonade Insurance 
+Internet NY S586063384000551 Card 0590  
+   10.42       
+3/5   Purchase authorized on 03/04 Medical Pain Cente Central 
+Oklah OK S356063506996866 Card 0590  
+   57.81       
+3/5   Purchase authorized on 03/04 Winco Foods #149 3535 NW 
+Oklahoma City OK P346064173259640 Card 0590  
+   64.88       
+3/5   Purchase authorized on 03/05 Love's #0211 Outside Oklahoma 
+City OK P356065053884873 Card 0590  
+   37.13       
+3/5   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     3.00    69.51    
+3/6   Money Transfer authorized on 03/05 From Gd-Amazon 
+Gd-Amazon CA P000000687355194 Card 0590  
+74.50          
+3/6   Hobby Lobby Stor PR Dir Dep James K Bly  999.58          
+3/6   Purchase authorized on 03/05 Southwest Orthopae Oklahoma 
+City OK S356064640766904 Card 0590  
+   135.82       
+3/6   Save As You Go Transfer Debit to Xxxxxxxxxxx3037     1.00    1,006.77    
+Totals $5,297.14 $5,380.84 
+The Ending Daily Balance does not reflect any pending withdrawals or holds on deposited funds that may have been outstanding on your account when 
+your transactions posted.  If you had insufficient available funds when a transaction posted, fees may have been assessed. 
+Monthly service fee summary 
+For a complete list of fees and detailed account information, see the disclosures applicable to your account or talk to a banker. Go to 
+wellsfargo.com/feefaq for a link to these documents, and answers to common monthly service fee questions. 
+Fee period 02/07/2026 - 03/06/2026 Standard monthly service fee $15.00 You paid $0.00 
+How to avoid the monthly service fee Minimum required This fee period 
+Have any  ONE of the following each fee period 
+• Minimum daily balance $1,500.00 $69.51  
+• Total amount of qualifying electronic deposits $500.00 $5,203.14 ÷ 
+• Age of primary account owner 17 - 24 

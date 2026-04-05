@@ -20,7 +20,7 @@ const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
 });
 
-const SYSTEM_PROMPT = `You are a bank statement parser. Extract every transaction from the provided bank statement.
+const SYSTEM_PROMPT = `You are a bank statement parser. Extract only OUTGOING transactions (money leaving the account) from the provided bank statement.
 
 Return ONLY a valid JSON array (no markdown, no explanation) with this exact structure:
 [
@@ -37,11 +37,30 @@ Rules:
 - name: use the exact merchant/description from the statement
 - amount: always positive number (absolute value). Do NOT include the dollar sign.
 - confidence: "high" if clearly legible, "medium" if partially visible, "low" if unclear
-- Include ALL transactions — debits, charges, withdrawals
-- Exclude: deposits, credits, payments received, balance amounts, account numbers
-- If you see a "pending" or "processing" label next to a transaction, still include it
-- Do NOT skip any transaction even if confidence is low
-- Return empty array [] if no transactions found`;
+
+INCLUDE (money going OUT):
+- Purchases and payments to merchants
+- Recurring payments and subscriptions
+- Transfers TO another account (e.g. "Online Transfer to...", "Transfer Debit to...")
+- Loan/bill payments (e.g. "WF Loan/Line Auto Pay", "Affirm Pay", "Synchrony Bank Payment")
+- "Save As You Go Transfer Debit" entries
+- Insurance, utility, and service payments
+- Cash App sends and similar outgoing transfers
+- Any amount listed in the Withdrawals/Subtractions column
+
+EXCLUDE (money coming IN — do NOT include these):
+- Direct deposits and payroll (e.g. "Dir Dep", "PR Dir Dep")
+- "Money Transfer From..." entries (these are incoming transfers/deposits)
+- "Online Transfer From..." entries (these are incoming transfers)
+- Credits, refunds, and reimbursements
+- Wells Fargo Rewards credits
+- Any amount listed in the Deposits/Additions column
+- Ending daily balance figures
+- Account numbers
+
+NOTE: In Wells Fargo statements, "Money Transfer authorized on [date] From [name]" means money coming IN — these are DEPOSITS and must be excluded. Only "Money Transfer authorized on [date] [payee]" without "From" or with "To" means money going OUT.
+
+- Return empty array [] if no outgoing transactions found`;
 
 router.post("/parse-statement", upload.single("file"), async (req, res) => {
   if (!req.file) {
