@@ -48,14 +48,18 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 ### API Server (`artifacts/api-server`)
 - **Port**: 8080 (fixed)
+- **Paths**: `/` (handles ALL requests in dev and production)
 - **Type**: Express 5 API server
-- **Purpose**: AI-powered features (OpenAI vision) that cannot run client-side
+- **Purpose**: AI-powered features + serves ledger-app static files (SPA host)
+- **Static serving**: In both dev and production, serves `artifacts/ledger-app/dist/public` via `express.static`. Path resolved using `import.meta.url` so it works correctly regardless of where the server is launched from. SPA fallback sends `index.html` for all unmatched routes.
 - **Key endpoints**:
   - `GET /api/healthz` — Health check
   - `POST /api/parse-statement` — Upload bank statement image → GPT-4o extracts transactions as JSON
 - **AI**: Replit AI Integrations (OpenAI) — no user API key required
 - **Key files**:
+  - `src/app.ts` — Express setup, static file serving, SPA fallback
   - `src/routes/parseStatement.ts` — AI statement parser
+- **IMPORTANT**: The `paths = ["/"]` in artifact.toml means this server handles all routes. The ledger-app Vite dev server (port 25002) is NOT used for serving in dev — the API server serves the built files from `dist/public`. To see frontend changes in dev, rebuild the ledger-app (`pnpm --filter @workspace/ledger-app run build`) then the API server will serve the new files.
 
 ## Environment Variables (shared)
 
