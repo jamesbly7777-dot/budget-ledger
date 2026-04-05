@@ -116,11 +116,28 @@ async function extractChunk(text: string, chunkIndex: number): Promise<RawTx[]> 
   }
 }
 
+function normalizeDate(raw: string): string {
+  if (!raw) return raw;
+  const parts = raw.replace(/\//g, "-").split("-");
+  if (parts.length !== 3) return raw;
+  const [m, d, y] = parts;
+  return `${m.padStart(2, "0")}/${d.padStart(2, "0")}/${y.length === 2 ? `20${y}` : y}`;
+}
+
+function normalizeName(raw: string): string {
+  return (raw ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[*]/g, "")
+    .replace(/\d{4,}/g, "");
+}
+
 function deduplicateTxs(txs: RawTx[]): RawTx[] {
   const seen = new Set<string>();
   const result: RawTx[] = [];
   for (const tx of txs) {
-    const key = `${tx.date}|${tx.name?.toLowerCase().trim()}|${Math.abs(tx.amount ?? 0).toFixed(2)}|${tx.type ?? "expense"}`;
+    const key = `${normalizeDate(tx.date)}|${normalizeName(tx.name)}|${Math.abs(tx.amount ?? 0).toFixed(2)}|${tx.type ?? "expense"}`;
     if (!seen.has(key)) {
       seen.add(key);
       result.push(tx);
@@ -151,7 +168,7 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
       logger.info({ chars: fullText.length }, "Extracted PDF text");
 
       const CHUNK_SIZE = 7000;
-      const OVERLAP = 1200;
+      const OVERLAP = 400;
       const chunks: string[] = [];
 
       for (let start = 0; start < fullText.length; start += CHUNK_SIZE - OVERLAP) {
