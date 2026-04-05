@@ -23,11 +23,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-    });
-    return unsub;
+    let resolved = false;
+
+    const unsub = onAuthStateChanged(
+      auth,
+      (u) => {
+        resolved = true;
+        setUser(u);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Firebase auth error:", error);
+        resolved = true;
+        setLoading(false);
+      }
+    );
+
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        console.warn("Firebase auth timed out — showing login screen");
+        setLoading(false);
+      }
+    }, 5000);
+
+    return () => {
+      unsub();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
