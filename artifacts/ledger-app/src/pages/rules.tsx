@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useRules, useAddRule, useUpdateRule, useDeleteRule } from "@/hooks/use-finance";
+import { useRules, useAddRule, useUpdateRule, useDeleteRule, useReapplyRules } from "@/hooks/use-finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Loader2, Plus, Edit2, Trash2, TestTube } from "lucide-react";
+import { Loader2, Plus, Edit2, Trash2, TestTube, RefreshCw } from "lucide-react";
 import { Rule, RuleCondition, RuleAction, TransactionCategory } from "@/lib/types";
 import { runRulesEngine } from "@/lib/rulesEngine";
 
@@ -16,9 +16,11 @@ export default function RulesPage() {
   const addRule = useAddRule();
   const updateRule = useUpdateRule();
   const deleteRule = useDeleteRule();
+  const reapply = useReapplyRules();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [reapplyResult, setReapplyResult] = useState<number | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -122,7 +124,28 @@ export default function RulesPage() {
           <p className="text-muted-foreground font-mono text-sm mt-1">Transaction categorization logic</p>
         </div>
         
-        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if(!open) resetForm(); }}>
+        <div className="flex items-center gap-2">
+          <div className="text-right">
+            {reapplyResult !== null && (
+              <p className="text-xs font-mono text-green-400">{reapplyResult} transaction{reapplyResult !== 1 ? "s" : ""} updated</p>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            className="font-mono text-xs uppercase tracking-wider"
+            disabled={reapply.isPending}
+            onClick={() => {
+              setReapplyResult(null);
+              reapply.mutate(
+                { rules: rules },
+                { onSuccess: (n) => setReapplyResult(n) }
+              );
+            }}
+          >
+            {reapply.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            Re-apply Rules
+          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if(!open) resetForm(); }}>
           <DialogTrigger asChild>
             <Button className="font-mono text-sm uppercase tracking-wider">
               <Plus className="h-4 w-4 mr-2" /> Add Rule
@@ -221,6 +244,7 @@ export default function RulesPage() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

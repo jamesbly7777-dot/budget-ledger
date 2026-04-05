@@ -16,7 +16,7 @@ export function useAddTransaction() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (tx: Omit<Transaction, "id" | "createdAt" | "updatedAt">) => service.addTransaction(user!.uid, tx),
+    mutationFn: (tx: Omit<Transaction, "id" | "createdAt" | "updatedAt" | "userId">) => service.addTransaction(user!.uid, tx as any),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["transactions", user?.uid] });
       queryClient.invalidateQueries({ queryKey: ["months", user?.uid] });
@@ -53,7 +53,7 @@ export function useBulkAddTransactions() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (txs: Omit<Transaction, "id" | "createdAt" | "updatedAt">[]) => service.bulkAddTransactions(user!.uid, txs),
+    mutationFn: (txs: Omit<Transaction, "id" | "createdAt" | "updatedAt" | "userId">[]) => service.bulkAddTransactions(user!.uid, txs as any),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["transactions", user?.uid] });
       queryClient.invalidateQueries({ queryKey: ["months", user?.uid] });
@@ -77,7 +77,7 @@ export function useAddBill() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (bill: Omit<Bill, "id" | "createdAt" | "updatedAt">) => service.addBill(user!.uid, bill),
+    mutationFn: (bill: Omit<Bill, "id" | "createdAt" | "updatedAt" | "userId">) => service.addBill(user!.uid, bill as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bills", user?.uid] });
     },
@@ -153,6 +153,19 @@ export function useDeleteRule() {
     mutationFn: (id: string) => service.deleteRule(user!.uid, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rules", user?.uid] });
+    },
+  });
+}
+
+export function useReapplyRules() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rules, month }: { rules: Rule[]; month?: string }) =>
+      service.reapplyRulesToTransactions(user!.uid, rules, month),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions", user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ["months", user?.uid] });
     },
   });
 }

@@ -67,7 +67,7 @@ function App() {
           <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, "")}>
             <Switch>
               <Route path="/auth" component={AuthPage} />
-              <Route path="/:rest*">
+              <Route>
                 <ProtectedApp />
               </Route>
             </Switch>

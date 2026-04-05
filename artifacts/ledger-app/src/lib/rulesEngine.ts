@@ -170,6 +170,17 @@ export function runRulesEngine(
   return results;
 }
 
+export function getCategoryForTransaction(
+  tx: { name: string; amount: number },
+  userRules: Rule[]
+): { category: TransactionCategory; status: TransactionStatus } {
+  const { category, status } = categorizeByRules(
+    { date: "", name: tx.name, amount: tx.amount },
+    userRules
+  );
+  return { category, status };
+}
+
 export function getMonthKey(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");

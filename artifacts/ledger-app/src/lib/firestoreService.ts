@@ -15,6 +15,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import type { Bill, Month, Rule, Transaction, TransactionCategory } from "./types";
+import { getCategoryForTransaction } from "./rulesEngine";
 
 function userTransactionsCol(userId: string) {
   return collection(db, "users", userId, "transactions");
@@ -157,6 +158,23 @@ export async function recalculateMonthTotals(userId: string, month: string): Pro
   const transactions = await getTransactions(userId, month);
   const total = transactions.reduce((sum, t) => sum + t.amount, 0);
   await upsertMonth(userId, month, { totalSpending: total });
+}
+
+export async function reapplyRulesToTransactions(
+  userId: string,
+  rules: Rule[],
+  month?: string
+): Promise<number> {
+  const txs = await getTransactions(userId, month);
+  let updated = 0;
+  for (const tx of txs) {
+    const { category, status } = getCategoryForTransaction({ name: tx.name, amount: tx.amount }, rules);
+    if (category !== tx.category || status !== tx.status) {
+      await updateTransaction(userId, tx.id, { category, status });
+      updated++;
+    }
+  }
+  return updated;
 }
 
 export function computeCategoryTotals(transactions: Transaction[]): Record<TransactionCategory, number> {
