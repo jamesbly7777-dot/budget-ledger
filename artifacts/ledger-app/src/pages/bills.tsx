@@ -301,10 +301,15 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             </div>
           ) : (
             <div className="divide-y divide-border">
-              {monthlyBills.map((bill) => (
-                <div key={bill.id} className={`flex items-center gap-3 px-6 py-3 transition-colors hover:bg-muted/30 ${bill.isPaid ? "opacity-50" : ""}`}>
+              {monthlyBills.map((bill) => {
+                const todayDay = new Date().getDate();
+                const isOverdue = !bill.isPaid && bill.dueDay < todayDay;
+                const isDueToday = !bill.isPaid && bill.dueDay === todayDay;
+                const isDueSoon = !bill.isPaid && bill.dueDay > todayDay && bill.dueDay - todayDay <= 3;
+                return (
+                <div key={bill.id} className={`flex items-center gap-3 px-6 py-3 transition-colors hover:bg-muted/30 ${bill.isPaid ? "opacity-50" : isOverdue ? "bg-red-500/5" : isDueToday ? "bg-yellow-500/5" : ""}`}>
                   <div className="w-10 text-center">
-                    <span className="font-mono text-lg font-bold text-muted-foreground">{bill.dueDay}</span>
+                    <span className={`font-mono text-lg font-bold ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-muted-foreground"}`}>{bill.dueDay}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className={`font-mono text-sm truncate ${bill.isPaid ? "line-through text-muted-foreground" : ""}`}>{bill.name}</p>
@@ -312,6 +317,9 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                       <span className="text-xs text-muted-foreground font-mono">{bill.isRecurring ? "Monthly" : selectedMonth}</span>
                       <span className="text-xs text-muted-foreground">·</span>
                       <span className="text-xs text-muted-foreground font-mono">{bill.category}</span>
+                      {isOverdue && <span className="text-xs font-mono text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">OVERDUE</span>}
+                      {isDueToday && <span className="text-xs font-mono text-yellow-400 bg-yellow-500/10 px-1.5 py-0.5 rounded">TODAY</span>}
+                      {isDueSoon && <span className="text-xs font-mono text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded">SOON</span>}
                     </div>
                   </div>
                   <span className="font-mono font-bold text-sm">${bill.amount.toFixed(2)}</span>
@@ -325,7 +333,8 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </CardContent>

@@ -1,12 +1,12 @@
 import { useState, useMemo } from "react";
-import { useTransactions } from "@/hooks/use-finance";
+import { useTransactions, useBills } from "@/hooks/use-finance";
 import { computeCategoryTotals, computeIncomeTotals } from "@/lib/firestoreService";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, TrendingUp, TrendingDown, Minus, Target } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Minus, Target, ShieldCheck, ShieldAlert } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, Legend,
@@ -40,6 +40,7 @@ function formatMonthLabel(monthKey: string): string {
 
 export default function AnalyticsPage({ selectedMonth }: { selectedMonth: string }) {
   const { data: allTxs, isLoading } = useTransactions();
+  const { data: bills } = useBills();
 
   const [goals, setGoals] = useState<Record<TransactionCategory, number>>(() => {
     try {
@@ -97,6 +98,14 @@ export default function AnalyticsPage({ selectedMonth }: { selectedMonth: string
   const wastePrev = prevMonthData?.categories["Waste"] || 0;
   const wasteChange = wastePrev > 0 ? ((wasteCurrent - wastePrev) / wastePrev) * 100 : 0;
   const wasteImproving = wasteCurrent < wastePrev && wastePrev > 0;
+
+  const monthlyBillsTotal = (bills || [])
+    .filter((b) => b.isRecurring || b.month === selectedMonth)
+    .reduce((s, b) => s + b.amount, 0);
+  const currentIncome = currentMonthData?.totalIncome || 0;
+  const safeToSpend = currentIncome - monthlyBillsTotal;
+  const billsCoverageRate = currentIncome > 0 && monthlyBillsTotal > 0 ? (currentIncome / monthlyBillsTotal) * 100 : null;
+  const isCovered = currentIncome >= monthlyBillsTotal && monthlyBillsTotal > 0;
 
   if (isLoading) {
     return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
@@ -162,6 +171,52 @@ export default function AnalyticsPage({ selectedMonth }: { selectedMonth: string
                 </div>
               )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {monthlyBillsTotal > 0 && currentIncome > 0 && (
+        <Card className={`border-2 ${isCovered ? "border-green-500/30 bg-green-500/5" : "border-red-500/30 bg-red-500/5"}`}>
+          <CardHeader className="pb-3">
+            <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              {isCovered ? <ShieldCheck className="w-4 h-4 text-green-400" /> : <ShieldAlert className="w-4 h-4 text-red-400" />}
+              Income Coverage — {currentMonthData?.label ?? selectedMonth}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+              <div>
+                <p className="text-xs font-mono text-muted-foreground uppercase">Income</p>
+                <p className="text-xl font-bold font-mono text-emerald-400 mt-1">${currentIncome.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-mono text-muted-foreground uppercase">Bills</p>
+                <p className="text-xl font-bold font-mono text-blue-400 mt-1">${monthlyBillsTotal.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-mono text-muted-foreground uppercase">Safe to Spend</p>
+                <p className={`text-xl font-bold font-mono mt-1 ${safeToSpend >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {safeToSpend >= 0 ? "+" : ""}${safeToSpend.toFixed(2)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-mono text-muted-foreground uppercase">Coverage</p>
+                <p className={`text-xl font-bold font-mono mt-1 ${isCovered ? "text-emerald-400" : "text-red-400"}`}>
+                  {billsCoverageRate !== null ? `${Math.min(billsCoverageRate, 999).toFixed(0)}%` : "—"}
+                </p>
+              </div>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2.5">
+              <div
+                className={`h-2.5 rounded-full transition-all ${isCovered ? "bg-emerald-500" : "bg-red-500"}`}
+                style={{ width: `${billsCoverageRate !== null ? Math.min(billsCoverageRate, 100) : 0}%` }}
+              />
+            </div>
+            <p className="text-xs font-mono text-muted-foreground mt-2">
+              {isCovered
+                ? `Income fully covers bills. $${safeToSpend.toFixed(2)} available for discretionary spending.`
+                : `Income is $${Math.abs(safeToSpend).toFixed(2)} short of covering all tracked bills.`}
+            </p>
           </CardContent>
         </Card>
       )}
