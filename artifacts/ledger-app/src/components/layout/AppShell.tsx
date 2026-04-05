@@ -19,7 +19,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getMonthKey, formatMonthLabel } from "@/lib/rulesEngine";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+
+function buildMonthOptions(existingMonths: string[], currentKey: string): string[] {
+  const keys = new Set<string>(existingMonths);
+  keys.add(currentKey);
+  const now = new Date();
+  for (let i = 0; i < 13; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    keys.add(getMonthKey(d));
+  }
+  return Array.from(keys).sort((a, b) => b.localeCompare(a));
+}
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -48,6 +59,10 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
   }, [selectedMonth, onMonthChange]);
 
   const currentMonthKey = selectedMonth || getMonthKey(new Date());
+  const monthOptions = useMemo(
+    () => buildMonthOptions(months?.map((m) => m.month) ?? [], currentMonthKey),
+    [months, currentMonthKey]
+  );
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden flex-col md:flex-row">
@@ -66,16 +81,11 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
               <SelectValue placeholder="Select Month" />
             </SelectTrigger>
             <SelectContent>
-              {months?.map((m) => (
-                <SelectItem key={m.id} value={m.month}>
-                  {formatMonthLabel(m.month)}
+              {monthOptions.map((key) => (
+                <SelectItem key={key} value={key}>
+                  {formatMonthLabel(key)}
                 </SelectItem>
               ))}
-              {!months?.find((m) => m.month === currentMonthKey) && (
-                <SelectItem value={currentMonthKey}>
-                  {formatMonthLabel(currentMonthKey)}
-                </SelectItem>
-              )}
             </SelectContent>
           </Select>
         </div>
@@ -132,16 +142,11 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
               <SelectValue placeholder="Select Month" />
             </SelectTrigger>
             <SelectContent>
-              {months?.map((m) => (
-                <SelectItem key={m.id} value={m.month}>
-                  {formatMonthLabel(m.month)}
+              {monthOptions.map((key) => (
+                <SelectItem key={key} value={key}>
+                  {formatMonthLabel(key)}
                 </SelectItem>
               ))}
-              {!months?.find((m) => m.month === currentMonthKey) && (
-                <SelectItem value={currentMonthKey}>
-                  {formatMonthLabel(currentMonthKey)}
-                </SelectItem>
-              )}
             </SelectContent>
           </Select>
         </header>
