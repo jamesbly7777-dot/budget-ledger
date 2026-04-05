@@ -127,7 +127,9 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
-      max_completion_tokens: 4096,
+      max_completion_tokens: 16384,
+      temperature: 0,
+      seed: 42,
     });
 
     const rawContent = response.choices[0]?.message?.content ?? "[]";
