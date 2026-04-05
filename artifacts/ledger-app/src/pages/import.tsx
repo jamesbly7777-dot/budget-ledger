@@ -198,8 +198,8 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
       category: it.resolvedCategory,
       status: it.status,
       month: selectedMonth,
-      isDuplicate: it.isDuplicate,
-      ruleApplied: it.ruleApplied,
+      isDuplicate: it.isDuplicate ?? false,
+      ...(it.ruleApplied ? { ruleApplied: it.ruleApplied } : {}),
     }));
 
     bulkAdd.mutate(payload, {
