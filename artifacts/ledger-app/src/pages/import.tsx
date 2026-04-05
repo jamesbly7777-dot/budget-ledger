@@ -36,7 +36,7 @@ const EXPENSE_CATEGORIES = [
   "Uncategorized",
 ];
 
-export default function ImportPage({ selectedMonth }: { selectedMonth: string }) {
+export default function ImportPage({ selectedMonth, onMonthChange }: { selectedMonth: string; onMonthChange?: (m: string) => void }) {
   const { data: existingTxs } = useTransactions(selectedMonth);
   const { data: userRules } = useRules();
   const bulkAdd = useBulkAddTransactions();
@@ -228,6 +228,13 @@ export default function ImportPage({ selectedMonth }: { selectedMonth: string })
         const saved = toSave.length;
         const inc = toSave.filter((t) => t.txType === "income").length;
         const exp = saved - inc;
+
+        // Switch to the month with the most imported transactions so the user sees their data immediately
+        const monthCounts: Record<string, number> = {};
+        payload.forEach((p) => { monthCounts[p.month] = (monthCounts[p.month] ?? 0) + 1; });
+        const dominantMonth = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+        if (dominantMonth && onMonthChange) onMonthChange(dominantMonth);
+
         toast({
           title: "Import Successful",
           description: `Saved ${exp} expense${exp !== 1 ? "s" : ""} and ${inc} income transaction${inc !== 1 ? "s" : ""}.`,

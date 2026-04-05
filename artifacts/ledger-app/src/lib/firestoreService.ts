@@ -12,6 +12,7 @@ import {
   serverTimestamp,
   Timestamp,
   setDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import type { Bill, Month, Rule, Transaction, TransactionCategory } from "./types";
@@ -67,10 +68,22 @@ export async function deleteTransaction(userId: string, txId: string): Promise<v
 }
 
 export async function bulkAddTransactions(userId: string, txs: Omit<Transaction, "id" | "createdAt" | "updatedAt">[]): Promise<string[]> {
+  const col = userTransactionsCol(userId);
   const ids: string[] = [];
-  for (const tx of txs) {
-    const id = await addTransaction(userId, tx);
-    ids.push(id);
+  const BATCH_SIZE = 490;
+  const now = serverTimestamp();
+
+  for (let i = 0; i < txs.length; i += BATCH_SIZE) {
+    const chunk = txs.slice(i, i + BATCH_SIZE);
+    const batch = writeBatch(db);
+    const chunkRefs: ReturnType<typeof doc>[] = [];
+    for (const tx of chunk) {
+      const ref = doc(col);
+      chunkRefs.push(ref);
+      batch.set(ref, { ...tx, userId, createdAt: now, updatedAt: now });
+    }
+    await batch.commit();
+    chunkRefs.forEach((r) => ids.push(r.id));
   }
   return ids;
 }

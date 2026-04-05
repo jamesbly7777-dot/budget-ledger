@@ -41,7 +41,7 @@ function ProtectedApp() {
             <BillsPage selectedMonth={selectedMonth} />
           </Route>
           <Route path="/import">
-            <ImportPage selectedMonth={selectedMonth} />
+            <ImportPage selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </Route>
           <Route path="/analytics">
             <AnalyticsPage selectedMonth={selectedMonth} />
