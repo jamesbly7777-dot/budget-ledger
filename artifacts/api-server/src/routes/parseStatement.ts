@@ -86,7 +86,7 @@ async function extractChunk(text: string, chunkIndex: number): Promise<RawTx[]> 
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Extract every transaction from this bank statement segment (segment ${chunkIndex + 1}). Return only the JSON array.\n\n---\n${text}`,
+        content: `Extract EVERY SINGLE transaction from this bank statement segment (segment ${chunkIndex + 1}). Read every line. Do not skip any withdrawal, payment, purchase, deposit, or transfer — include all of them. Return only the JSON array.\n\n---\n${text}`,
       },
     ],
     max_completion_tokens: 8192,
@@ -150,8 +150,8 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
 
       logger.info({ chars: fullText.length }, "Extracted PDF text");
 
-      const CHUNK_SIZE = 12000;
-      const OVERLAP = 1500;
+      const CHUNK_SIZE = 7000;
+      const OVERLAP = 1200;
       const chunks: string[] = [];
 
       for (let start = 0; start < fullText.length; start += CHUNK_SIZE - OVERLAP) {
