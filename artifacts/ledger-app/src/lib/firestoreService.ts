@@ -40,10 +40,11 @@ function tsToStr(ts: unknown): string {
 export async function getTransactions(userId: string, month?: string): Promise<Transaction[]> {
   const col = userTransactionsCol(userId);
   const q = month
-    ? query(col, where("month", "==", month), orderBy("date", "asc"))
-    : query(col, orderBy("date", "asc"));
+    ? query(col, where("month", "==", month))
+    : query(col);
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Transaction, "id">) }));
+  const txs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Transaction, "id">) }));
+  return txs.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export async function addTransaction(userId: string, tx: Omit<Transaction, "id" | "createdAt" | "updatedAt">): Promise<string> {
