@@ -18,6 +18,7 @@ interface SuggestedBill {
   category: TransactionCategory;
   monthCount: number;
   confidence: "recurring" | "likely";
+  sourceMonth: string; // the month this was found in (used when adding as non-recurring)
 }
 
 function normalizeName(name: string): string {
@@ -73,7 +74,7 @@ function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
       txs.forEach((t) => { catCounts[t.category] = (catCounts[t.category] ?? 0) + 1; });
       const bestCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0][0] as TransactionCategory;
 
-      suggestions.push({ key, name: bestName, amount: Math.round(avgAmount * 100) / 100, dueDay: Math.round(avgDay), category: bestCat, monthCount: uniqueMonths.size, confidence: "recurring" });
+      suggestions.push({ key, name: bestName, amount: Math.round(avgAmount * 100) / 100, dueDay: Math.round(avgDay), category: bestCat, monthCount: uniqueMonths.size, confidence: "recurring", sourceMonth: Array.from(uniqueMonths).sort().pop() ?? "" });
     } else {
       // Single month: suggest Bills-category or any expense ≥ $15 as likely recurring
       const tx = txs[0];
@@ -81,7 +82,7 @@ function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
       if (tx.amount < 15) continue;
       const dueDay = parseInt(tx.date.split("/")[1] ?? "1", 10);
       if (dueDay < 1 || dueDay > 31) continue;
-      suggestions.push({ key, name: tx.name, amount: tx.amount, dueDay, category: tx.category, monthCount: 1, confidence: "likely" });
+      suggestions.push({ key, name: tx.name, amount: tx.amount, dueDay, category: tx.category, monthCount: 1, confidence: "likely", sourceMonth: tx.month });
     }
   }
 
@@ -114,8 +115,10 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const [detectOpen, setDetectOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedBill[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [perItemRecurring, setPerItemRecurring] = useState<Record<string, boolean>>({});
   const [addingAll, setAddingAll] = useState(false);
   const [scanStats, setScanStats] = useState<{ total: number; months: number } | null>(null);
+  const [billFilter, setBillFilter] = useState<"all" | "unpaid" | "paid">("all");
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -129,6 +132,12 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     () => (bills || []).filter((b) => b.isRecurring || b.month === selectedMonth).sort((a, b) => a.dueDay - b.dueDay),
     [bills, selectedMonth]
   );
+
+  const filteredBills = useMemo(() => {
+    if (billFilter === "paid") return monthlyBills.filter((b) => b.isPaid);
+    if (billFilter === "unpaid") return monthlyBills.filter((b) => !b.isPaid);
+    return monthlyBills;
+  }, [monthlyBills, billFilter]);
 
   const totalAmount = monthlyBills.reduce((s, b) => s + b.amount, 0);
   const paidAmount = monthlyBills.filter((b) => b.isPaid).reduce((s, b) => s + b.amount, 0);
@@ -163,7 +172,11 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     }
     setSuggestions(found);
     setScanStats({ total: allTxs.length, months: uniqueMonths });
-    setSelected(new Set(found.filter((s) => s.confidence === "recurring").map((s) => s.key)));
+    // Pre-select all; default recurring ON for multi-month, OFF for single-month
+    setSelected(new Set(found.map((s) => s.key)));
+    const initRecurring: Record<string, boolean> = {};
+    found.forEach((s) => { initRecurring[s.key] = s.confidence === "recurring"; });
+    setPerItemRecurring(initRecurring);
     setDetectOpen(true);
   };
 
@@ -171,12 +184,25 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     const toAdd = suggestions.filter((s) => selected.has(s.key));
     if (!toAdd.length) return;
     setAddingAll(true);
+    let recurringCount = 0;
+    let monthSpecificCount = 0;
     for (const s of toAdd) {
-      await addBill.mutateAsync({ name: s.name, amount: s.amount, dueDay: s.dueDay, category: s.category, isRecurring: true, isPaid: false });
+      const isRecurring = perItemRecurring[s.key] ?? (s.confidence === "recurring");
+      const billData: any = { name: s.name, amount: s.amount, dueDay: s.dueDay, category: s.category, isRecurring, isPaid: false };
+      if (!isRecurring) {
+        billData.month = s.sourceMonth || selectedMonth;
+        monthSpecificCount++;
+      } else {
+        recurringCount++;
+      }
+      await addBill.mutateAsync(billData);
     }
     setAddingAll(false);
     setDetectOpen(false);
-    toast({ title: "Bills added", description: `Added ${toAdd.length} bill${toAdd.length !== 1 ? "s" : ""}.` });
+    const parts = [];
+    if (recurringCount) parts.push(`${recurringCount} recurring`);
+    if (monthSpecificCount) parts.push(`${monthSpecificCount} month-specific`);
+    toast({ title: "Bills added", description: `Added ${parts.join(", ")} bill${toAdd.length !== 1 ? "s" : ""}.` });
   };
 
   const handleSave = () => {
@@ -338,18 +364,50 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
 
       {/* Full Bill Schedule */}
       <Card className="border-border">
-        <CardHeader className="pb-2">
-          <div className="flex justify-between items-center">
-            <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              All Bills — Sorted by Due Date
-            </CardTitle>
-            <span className="font-mono text-xs text-muted-foreground">{monthlyBills.length} total</span>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                Bill Schedule — {selectedMonth}
+              </CardTitle>
+              {monthlyBills.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { const unpaid = monthlyBills.filter((b) => !b.isPaid); unpaid.forEach((b) => updateBill.mutate({ id: b.id, data: { isPaid: true } })); }}
+                  className="font-mono text-xs text-muted-foreground hover:text-green-400 h-7"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> Mark All Paid
+                </Button>
+              )}
+            </div>
+            {monthlyBills.length > 0 && (
+              <>
+                <div className="w-full bg-muted rounded-full h-1.5">
+                  <div
+                    className="h-1.5 rounded-full bg-green-500 transition-all"
+                    style={{ width: `${totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0}%` }}
+                  />
+                </div>
+                <div className="flex gap-1">
+                  {(["all", "unpaid", "paid"] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setBillFilter(f)}
+                      className={`font-mono text-xs uppercase px-3 py-1 rounded transition-colors ${billFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                    >
+                      {f} ({f === "all" ? monthlyBills.length : f === "unpaid" ? monthlyBills.filter(b => !b.isPaid).length : monthlyBills.filter(b => b.isPaid).length})
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
           {monthlyBills.length === 0 ? (
             <div className="text-center py-12 space-y-3">
-              <p className="text-muted-foreground font-mono text-sm">No bills tracked yet.</p>
+              <p className="text-muted-foreground font-mono text-sm">No bills tracked yet for {selectedMonth}.</p>
               <div className="flex justify-center gap-2">
                 <Button variant="outline" size="sm" onClick={handleScan} className="font-mono text-xs uppercase">
                   <ScanSearch className="h-3.5 w-3.5 mr-2" /> Detect Bills
@@ -359,9 +417,11 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                 </Button>
               </div>
             </div>
+          ) : filteredBills.length === 0 ? (
+            <p className="text-center py-8 font-mono text-sm text-muted-foreground">No {billFilter} bills.</p>
           ) : (
             <div className="divide-y divide-border">
-              {monthlyBills.map((bill) => <BillRow key={bill.id} bill={bill} />)}
+              {filteredBills.map((bill) => <BillRow key={bill.id} bill={bill} />)}
             </div>
           )}
         </CardContent>
@@ -381,24 +441,36 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             )}
           </DialogHeader>
           <div className="space-y-1 py-2">
-            <div className="grid grid-cols-[auto,1fr,auto,auto] gap-x-3 text-xs font-mono text-muted-foreground uppercase px-1 pb-1 border-b border-border">
-              <span></span><span>Merchant</span><span className="text-center">Day</span><span className="text-right">Amount</span>
+            <div className="grid grid-cols-[auto,1fr,auto,auto,auto] gap-x-3 text-xs font-mono text-muted-foreground uppercase px-1 pb-1 border-b border-border">
+              <span></span><span>Merchant</span><span className="text-center">Day</span><span className="text-right">Amt</span><span className="text-center">Monthly</span>
             </div>
-            {suggestions.map((s) => (
-              <label key={s.key} className="grid grid-cols-[auto,1fr,auto,auto] gap-x-3 items-center px-1 py-2 cursor-pointer hover:bg-muted/30 rounded">
-                <input type="checkbox" checked={selected.has(s.key)}
-                  onChange={(e) => { const n = new Set(selected); e.target.checked ? n.add(s.key) : n.delete(s.key); setSelected(n); }}
-                  className="accent-primary w-4 h-4" />
-                <div className="min-w-0">
-                  <p className="font-mono text-sm truncate">{s.name}</p>
-                  <p className="text-xs font-mono text-muted-foreground">
-                    {s.confidence === "recurring" ? `Recurring · ${s.monthCount} months` : "Likely recurring · 1 month"}
-                  </p>
+            {suggestions.map((s) => {
+              const isRec = perItemRecurring[s.key] ?? (s.confidence === "recurring");
+              return (
+                <div key={s.key} className="grid grid-cols-[auto,1fr,auto,auto,auto] gap-x-3 items-center px-1 py-2 hover:bg-muted/30 rounded">
+                  <input type="checkbox" checked={selected.has(s.key)}
+                    onChange={(e) => { const n = new Set(selected); e.target.checked ? n.add(s.key) : n.delete(s.key); setSelected(n); }}
+                    className="accent-primary w-4 h-4 cursor-pointer" />
+                  <div className="min-w-0">
+                    <p className="font-mono text-sm truncate">{s.name}</p>
+                    <p className="text-xs font-mono text-muted-foreground">
+                      {isRec
+                        ? <span className="text-primary">Every month · {s.monthCount}mo found</span>
+                        : <span className="text-yellow-400">{s.sourceMonth} only</span>}
+                    </p>
+                  </div>
+                  <span className="font-mono text-xs text-muted-foreground text-center">Day {s.dueDay}</span>
+                  <span className="font-mono font-bold text-sm text-right">${s.amount.toFixed(2)}</span>
+                  <div className="flex justify-center">
+                    <Switch
+                      checked={isRec}
+                      onCheckedChange={(v) => setPerItemRecurring((prev) => ({ ...prev, [s.key]: v }))}
+                      className="scale-75"
+                    />
+                  </div>
                 </div>
-                <span className="font-mono text-xs text-muted-foreground text-center">Day {s.dueDay}</span>
-                <span className="font-mono font-bold text-sm text-right">${s.amount.toFixed(2)}</span>
-              </label>
-            ))}
+              );
+            })}
           </div>
           <div className="flex justify-between items-center pt-2">
             <button onClick={() => setSelected(selected.size === suggestions.length ? new Set() : new Set(suggestions.map((s) => s.key)))}
