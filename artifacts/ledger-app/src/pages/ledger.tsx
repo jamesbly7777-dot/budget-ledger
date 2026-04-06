@@ -70,7 +70,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
     const payload = {
       date: formData.date,
       name: formData.name,
-      amount: parseFloat(formData.amount),
+      amount: Math.abs(parseFloat(formData.amount)),
       category: formData.category,
       status: formData.status,
       month: selectedMonth,

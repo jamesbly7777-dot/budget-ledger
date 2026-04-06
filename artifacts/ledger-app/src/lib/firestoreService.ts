@@ -172,8 +172,8 @@ export async function recalculateMonthTotals(userId: string, month: string): Pro
   const transactions = await getTransactions(userId, month);
   const expenses = transactions.filter((t) => !t.type || t.type === "expense");
   const income = transactions.filter((t) => t.type === "income");
-  const totalSpending = expenses.reduce((sum, t) => sum + t.amount, 0);
-  const totalIncome = income.reduce((sum, t) => sum + t.amount, 0);
+  const totalSpending = expenses.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const totalIncome = income.reduce((sum, t) => sum + Math.abs(t.amount), 0);
   await upsertMonth(userId, month, { totalSpending, totalIncome });
 }
 
@@ -209,7 +209,7 @@ export function computeCategoryTotals(transactions: Transaction[]): Record<Trans
   };
   for (const t of expenses) {
     if (t.category in totals) {
-      totals[t.category] += t.amount;
+      totals[t.category] += Math.abs(t.amount);
     }
   }
   return totals;
@@ -226,7 +226,7 @@ export function computeIncomeTotals(transactions: Transaction[]): Record<string,
   };
   for (const t of income) {
     const key = t.incomeCategory ?? "Other Income";
-    totals[key] = (totals[key] ?? 0) + t.amount;
+    totals[key] = (totals[key] ?? 0) + Math.abs(t.amount);
   }
   return totals;
 }

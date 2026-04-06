@@ -24,8 +24,8 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
   const expenses = txs.filter((t) => !t.type || t.type === "expense");
   const income = txs.filter((t) => t.type === "income");
 
-  const totalSpending = expenses.reduce((sum, t) => sum + t.amount, 0);
-  const totalIncome = income.reduce((sum, t) => sum + t.amount, 0);
+  const totalSpending = expenses.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const totalIncome = income.reduce((sum, t) => sum + Math.abs(t.amount), 0);
   const net = totalIncome - totalSpending;
 
   const categoryTotals = computeCategoryTotals(txs);
