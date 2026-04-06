@@ -52,8 +52,61 @@ function parseDueDay(dateStr: string): number {
   return 0;
 }
 
+function clusterDays(days: number[]): number[][] {
+  // Split a set of day-of-month values into distinct clusters (e.g. [7,7,21,21] → [[7,7],[21,21]])
+  // Uses a gap threshold: if consecutive sorted days differ by > 10, start a new cluster
+  if (!days.length) return [];
+  const sorted = [...days].sort((a, b) => a - b);
+  const clusters: number[][] = [[sorted[0]]];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - sorted[i - 1] > 10) {
+      clusters.push([sorted[i]]);
+    } else {
+      clusters[clusters.length - 1].push(sorted[i]);
+    }
+  }
+  return clusters;
+}
+
+function makeSuggestion(
+  key: string,
+  txGroup: Transaction[],
+  monthCount: number,
+  labelSuffix?: string
+): SuggestedBill | null {
+  const days = txGroup.map((t) => parseDueDay(t.date)).filter((d) => d > 0);
+  if (!days.length) return null;
+  const avgDay = days.reduce((a, b) => a + b, 0) / days.length;
+  const dayStdDev = Math.sqrt(days.reduce((s, d) => s + (d - avgDay) ** 2, 0) / days.length);
+  if (dayStdDev > 5) return null; // Within-cluster variance must be tight
+  const amounts = txGroup.map((t) => t.amount);
+  const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+  if (avgAmount < 10) return null;
+  const amtStdDev = Math.sqrt(amounts.reduce((s, a) => s + (a - avgAmount) ** 2, 0) / amounts.length);
+  if (amtStdDev / avgAmount > 0.5) return null;
+  const nameCounts: Record<string, number> = {};
+  txGroup.forEach((t) => { nameCounts[t.name] = (nameCounts[t.name] ?? 0) + 1; });
+  const bestName = Object.entries(nameCounts).sort((a, b) => b[1] - a[1])[0][0];
+  const catCounts: Record<string, number> = {};
+  txGroup.forEach((t) => { catCounts[t.category] = (catCounts[t.category] ?? 0) + 1; });
+  const bestCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0][0] as TransactionCategory;
+  const sortedMonths = Array.from(new Set(txGroup.map((t) => t.month))).sort();
+  return {
+    key: labelSuffix ? `${key}_${labelSuffix}` : key,
+    name: labelSuffix ? `${bestName} (${labelSuffix})` : bestName,
+    amount: Math.round(avgAmount * 100) / 100,
+    dueDay: Math.round(avgDay),
+    category: bestCat,
+    monthCount,
+    confidence: "recurring",
+    sourceMonth: sortedMonths[sortedMonths.length - 1] ?? "",
+  };
+}
+
 function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
   const expenses = transactions.filter((t) => !t.type || t.type === "expense");
+
+  // Group all expense transactions by normalized name
   const groups: Record<string, Transaction[]> = {};
   for (const tx of expenses) {
     if (tx.amount < 10) continue;
@@ -63,38 +116,21 @@ function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
     if (!groups[key]) groups[key] = [];
     groups[key].push(tx);
   }
+
   const suggestions: SuggestedBill[] = [];
+
   for (const [key, txs] of Object.entries(groups)) {
-    const uniqueMonths = new Set(txs.map((t) => t.month));
-    if (uniqueMonths.size >= 2) {
-      // Confirmed recurring: appeared in multiple months
-      const days = txs.map((t) => parseDueDay(t.date)).filter((d) => d > 0);
-      if (!days.length) continue;
-      const avgDay = days.reduce((a, b) => a + b, 0) / days.length;
-      const dayStdDev = Math.sqrt(days.reduce((s, d) => s + (d - avgDay) ** 2, 0) / days.length);
-      if (dayStdDev > 8) continue;
-      const amounts = txs.map((t) => t.amount);
-      const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
-      if (avgAmount < 10) continue;
-      const amtStdDev = Math.sqrt(amounts.reduce((s, a) => s + (a - avgAmount) ** 2, 0) / amounts.length);
-      if (amtStdDev / avgAmount > 0.5) continue;
-      const nameCounts: Record<string, number> = {};
-      txs.forEach((t) => { nameCounts[t.name] = (nameCounts[t.name] ?? 0) + 1; });
-      const bestName = Object.entries(nameCounts).sort((a, b) => b[1] - a[1])[0][0];
-      const catCounts: Record<string, number> = {};
-      txs.forEach((t) => { catCounts[t.category] = (catCounts[t.category] ?? 0) + 1; });
-      const bestCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0][0] as TransactionCategory;
-      suggestions.push({
-        key, name: bestName,
-        amount: Math.round(avgAmount * 100) / 100,
-        dueDay: Math.round(avgDay),
-        category: bestCat,
-        monthCount: uniqueMonths.size,
-        confidence: "recurring",
-        sourceMonth: Array.from(uniqueMonths).sort().pop() ?? "",
-      });
-    } else {
-      // Only seen in one month — still add as "likely" recurring if amount qualifies
+    // Group transactions by month
+    const byMonth: Record<string, Transaction[]> = {};
+    for (const tx of txs) {
+      if (!byMonth[tx.month]) byMonth[tx.month] = [];
+      byMonth[tx.month].push(tx);
+    }
+    const months = Object.keys(byMonth).sort();
+    const uniqueMonthCount = months.length;
+
+    if (uniqueMonthCount < 2) {
+      // Seen in only one month — add as "likely" if amount qualifies
       const tx = txs[0];
       if (tx.category === "Transfers") continue;
       if (tx.amount < 15) continue;
@@ -105,8 +141,34 @@ function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
         category: tx.category, monthCount: 1,
         confidence: "likely", sourceMonth: tx.month,
       });
+      continue;
+    }
+
+    // Collect all day-of-month values across all months
+    const allDays = txs.map((t) => parseDueDay(t.date)).filter((d) => d > 0);
+    const clusters = clusterDays(allDays);
+
+    if (clusters.length === 1) {
+      // Standard monthly bill — appears around the same day each month
+      const s = makeSuggestion(key, txs, uniqueMonthCount);
+      if (s) suggestions.push(s);
+    } else {
+      // Semi-monthly bill — appears on multiple distinct days per month (e.g. day 7 AND day 21)
+      // Each cluster becomes its own recurring bill entry
+      const ordinals = ["1st", "2nd", "3rd", "4th"];
+      clusters.forEach((cluster, idx) => {
+        // Find transactions whose day falls in this cluster
+        const clusterTxs = txs.filter((t) => cluster.includes(parseDueDay(t.date)));
+        // Only include months that have at least one transaction in this cluster
+        const clusterMonths = new Set(clusterTxs.map((t) => t.month));
+        if (clusterMonths.size < 2) return; // Need multiple months to be "confirmed"
+        const suffix = clusters.length > 1 ? ordinals[idx] ?? `${idx + 1}th` : undefined;
+        const s = makeSuggestion(key, clusterTxs, clusterMonths.size, suffix);
+        if (s) suggestions.push(s);
+      });
     }
   }
+
   return suggestions.sort((a, b) => a.dueDay - b.dueDay);
 }
 
