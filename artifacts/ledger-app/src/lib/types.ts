@@ -114,6 +114,7 @@ export interface ImportPreviewItem {
   duplicateOf?: string;
   ruleApplied?: string;
   action: "save" | "skip" | "review";
+  recurringBill?: boolean;
 }
 
 export interface MonthSummary {

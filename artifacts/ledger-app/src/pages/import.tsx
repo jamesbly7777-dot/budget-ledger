@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { useTransactions, useRules, useBulkAddTransactions } from "@/hooks/use-finance";
+import { useTransactions, useRules, useBulkAddTransactions, useAddBill } from "@/hooks/use-finance";
 import { parseCSV } from "@/lib/csvParser";
 import { runRulesEngine } from "@/lib/rulesEngine";
 import { ImportPreviewItem, INCOME_CATEGORIES } from "@/lib/types";
@@ -17,6 +17,7 @@ import {
   FileText,
   TrendingUp,
   TrendingDown,
+  RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -40,6 +41,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
   const { data: existingTxs } = useTransactions(); // no month filter — check ALL months for duplicates
   const { data: userRules } = useRules();
   const bulkAdd = useBulkAddTransactions();
+  const addBill = useAddBill();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -190,7 +192,19 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
     );
   };
 
-  const handleConfirm = () => {
+  const updateItemRecurring = (id: string, recurringBill: boolean) => {
+    setPreviewItems((items) => items.map((it) => (it.id === id ? { ...it, recurringBill } : it)));
+  };
+
+  const parseDueDayFromDate = (date: string): number => {
+    try {
+      const parts = date.split("/");
+      if (parts.length >= 2) return parseInt(parts[1], 10) || 1;
+    } catch { /* noop */ }
+    return 1;
+  };
+
+  const handleConfirm = async () => {
     const toSave = previewItems.filter((it) => it.action === "save");
     if (toSave.length === 0) {
       toast({ description: "No transactions marked for save." });
@@ -223,8 +237,10 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
       };
     });
 
+    const recurringItems = toSave.filter((it) => it.recurringBill && it.txType === "expense");
+
     bulkAdd.mutate(payload as any, {
-      onSuccess: () => {
+      onSuccess: async () => {
         const saved = toSave.length;
         const inc = toSave.filter((t) => t.txType === "income").length;
         const exp = saved - inc;
@@ -235,9 +251,26 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
         const dominantMonth = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
         if (dominantMonth && onMonthChange) onMonthChange(dominantMonth);
 
+        // Create recurring bills for marked items
+        let billsAdded = 0;
+        for (const item of recurringItems) {
+          try {
+            await addBill.mutateAsync({
+              name: item.name,
+              amount: item.amount,
+              dueDay: parseDueDayFromDate(item.date),
+              category: item.resolvedCategory as any,
+              isRecurring: true,
+              isPaid: false,
+            });
+            billsAdded++;
+          } catch { /* skip if bill already exists or fails */ }
+        }
+
+        const billNote = billsAdded > 0 ? ` — ${billsAdded} recurring bill${billsAdded !== 1 ? "s" : ""} added to Bills list` : "";
         toast({
           title: "Import Successful",
-          description: `Saved ${exp} expense${exp !== 1 ? "s" : ""} and ${inc} income transaction${inc !== 1 ? "s" : ""}.`,
+          description: `Saved ${exp} expense${exp !== 1 ? "s" : ""} and ${inc} income transaction${inc !== 1 ? "s" : ""}${billNote}.`,
         });
         setPreviewItems([]);
         setPreviewImageUrl(null);
@@ -264,6 +297,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
   const expenseItems = previewItems.filter((i) => i.txType === "expense");
   const totalIncome = incomeItems.filter((i) => i.action === "save").reduce((s, i) => s + i.amount, 0);
   const totalExpense = expenseItems.filter((i) => i.action === "save").reduce((s, i) => s + i.amount, 0);
+  const recurringCount = previewItems.filter((i) => i.recurringBill && i.action === "save").length;
 
   return (
     <div className="space-y-6">
@@ -422,6 +456,14 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                 <span className="text-muted-foreground uppercase text-[10px] tracking-wider">Duplicates</span>
                 <span className="font-bold text-lg text-yellow-400">{previewItems.filter((i) => i.isDuplicate).length}</span>
               </div>
+              {recurringCount > 0 && (
+                <div className="flex flex-col">
+                  <span className="text-muted-foreground uppercase text-[10px] tracking-wider flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3 text-primary" /> Recurring
+                  </span>
+                  <span className="font-bold text-lg text-primary">{recurringCount}</span>
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={handleReset} className="font-mono text-xs uppercase tracking-wider">
@@ -507,19 +549,34 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                               </SelectContent>
                             </Select>
                           ) : (
-                            <Select
-                              value={item.resolvedCategory}
-                              onValueChange={(v) => updateItemCategory(item.id, v)}
-                            >
-                              <SelectTrigger className="h-8 font-mono text-[10px] uppercase w-[120px] bg-transparent border-border">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {EXPENSE_CATEGORIES.map((cat) => (
-                                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <div className="space-y-1.5">
+                              <Select
+                                value={item.resolvedCategory}
+                                onValueChange={(v) => updateItemCategory(item.id, v)}
+                              >
+                                <SelectTrigger className="h-8 font-mono text-[10px] uppercase w-[120px] bg-transparent border-border">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {EXPENSE_CATEGORIES.map((cat) => (
+                                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {item.action === "save" && (
+                                <button
+                                  onClick={() => updateItemRecurring(item.id, !item.recurringBill)}
+                                  className={`flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded transition-colors ${
+                                    item.recurringBill
+                                      ? "bg-primary/20 text-primary border border-primary/40"
+                                      : "bg-transparent text-muted-foreground border border-border/50 hover:border-primary/30 hover:text-primary/70"
+                                  }`}
+                                >
+                                  <RefreshCw className="w-2.5 h-2.5" />
+                                  {item.recurringBill ? "Recurring" : "Add Recurring"}
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="px-4 py-3">
