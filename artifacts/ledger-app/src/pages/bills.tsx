@@ -1056,46 +1056,72 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-xs font-mono text-green-400">{parsedBills.length} bills parsed — edit anything below, then confirm:</p>
-              <div className="border border-border rounded overflow-hidden">
-                <div className="grid grid-cols-[1fr,90px,60px,auto] gap-x-2 text-[10px] font-mono text-muted-foreground uppercase px-3 py-2 bg-muted/30 border-b border-border">
-                  <span>Name</span><span>Amount</span><span>Due Day</span><span></span>
-                </div>
-                <div className="divide-y divide-border max-h-[360px] overflow-y-auto">
-                  {parsedBills.map((b, i) => (
-                    <div key={i} className="grid grid-cols-[1fr,90px,60px,auto] gap-x-2 items-center px-3 py-1.5">
+              <p className="text-xs font-mono text-green-400">{parsedBills.length} bill{parsedBills.length !== 1 ? "s" : ""} — edit name, amount, due day, category, or recurring below. Trash icon removes the entry.</p>
+              <div className="divide-y divide-border border border-border rounded overflow-hidden max-h-[420px] overflow-y-auto">
+                {parsedBills.map((b, i) => (
+                  <div key={i} className="p-3 space-y-2 bg-card hover:bg-muted/10 transition-colors">
+                    {/* Row 1 — Name + Amount + Delete */}
+                    <div className="flex items-center gap-2">
                       <Input
                         value={b.name}
+                        placeholder="Bill name"
                         onChange={(e) => setParsedBills((prev) => prev.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))}
-                        className="font-mono text-xs h-7 bg-input border-border px-2"
+                        className="flex-1 font-mono text-xs h-7 bg-input border-border px-2"
                       />
-                      <div className="relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-mono">$</span>
+                      <div className="relative w-24 flex-shrink-0">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-mono pointer-events-none">$</span>
                         <Input
                           type="number"
+                          min={0}
+                          step={0.01}
                           value={b.amount}
                           onChange={(e) => setParsedBills((prev) => prev.map((x, idx) => idx === i ? { ...x, amount: parseFloat(e.target.value) || 0 } : x))}
                           className="font-mono text-xs h-7 bg-input border-border pl-5 pr-2"
                         />
                       </div>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={31}
-                        value={b.dueDay}
-                        onChange={(e) => setParsedBills((prev) => prev.map((x, idx) => idx === i ? { ...x, dueDay: parseInt(e.target.value) || 1 } : x))}
-                        className="font-mono text-xs h-7 bg-input border-border px-2 text-center"
-                      />
                       <button
                         onClick={() => setParsedBills((prev) => prev.filter((_, idx) => idx !== i))}
-                        className="text-muted-foreground hover:text-red-400 transition-colors p-1"
+                        className="flex-shrink-0 p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
                         title="Remove this bill"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                  ))}
-                </div>
+                    {/* Row 2 — Due Day + Category + Recurring */}
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <span className="text-[10px] font-mono text-muted-foreground uppercase whitespace-nowrap">Day</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={31}
+                          value={b.dueDay}
+                          onChange={(e) => setParsedBills((prev) => prev.map((x, idx) => idx === i ? { ...x, dueDay: parseInt(e.target.value) || 1 } : x))}
+                          className="w-14 font-mono text-xs h-7 bg-input border-border px-2 text-center"
+                        />
+                      </div>
+                      <Select
+                        value={b.category}
+                        onValueChange={(v) => setParsedBills((prev) => prev.map((x, idx) => idx === i ? { ...x, category: v as TransactionCategory } : x))}
+                      >
+                        <SelectTrigger className="h-7 font-mono text-xs flex-1 bg-input border-border min-w-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allCategories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <span className="text-[10px] font-mono text-muted-foreground uppercase whitespace-nowrap">Monthly</span>
+                        <Switch
+                          checked={b.isRecurring}
+                          onCheckedChange={(v) => setParsedBills((prev) => prev.map((x, idx) => idx === i ? { ...x, isRecurring: v } : x))}
+                          className="scale-[0.75] origin-right"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
               <div className="flex justify-between items-center pt-1">
                 <div className="flex gap-2">
