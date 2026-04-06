@@ -514,8 +514,9 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     const isDueSoon = !paid && bill.dueDay > todayDay && bill.dueDay - todayDay <= 3;
     return (
       <div className={`flex items-center gap-2 px-4 py-3 transition-colors hover:bg-muted/20 ${paid ? "opacity-50" : isOverdue ? "bg-red-500/5" : isDueToday ? "bg-yellow-500/5" : ""}`}>
-        <div className="w-8 text-center flex-shrink-0">
-          <span className={`font-mono text-sm font-bold ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-muted-foreground"}`}>{bill.dueDay}</span>
+        <div className="flex-shrink-0 text-center min-w-[36px]">
+          <span className={`font-mono text-xs font-bold block ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-primary"}`}>{bill.dueDay}</span>
+          <span className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider">day</span>
         </div>
         <div className="flex-1 min-w-0">
           <p className={`font-mono text-sm truncate ${paid ? "line-through text-muted-foreground" : ""}`}>{bill.name}</p>
@@ -970,10 +971,11 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           {parsedBills.length === 0 ? (
             <div className="space-y-3">
               <Textarea
-                className="font-mono text-xs bg-input border-border min-h-[280px] resize-none"
+                className="font-mono text-xs bg-input border-border min-h-[280px] resize-y"
                 placeholder={"Vehicle:\n03/11 — Wells Fargo Auto Loan: $181.39\n03/23 — Oklahoma Motor Credit: $290.00\n\nSubscriptions:\n03/12 — ChatGPT: $21.19\n03/17 — Planet Fitness: $21.75\n\nMedical Bills:\n03/17 — Integris: $50.00"}
                 value={pasteText}
                 onChange={(e) => setPasteText(e.target.value)}
+                autoFocus
               />
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => { setPasteOpen(false); setPasteText(""); }} className="font-mono text-xs uppercase">Cancel</Button>
@@ -995,18 +997,43 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-xs font-mono text-green-400">{parsedBills.length} bills parsed — review and confirm:</p>
+              <p className="text-xs font-mono text-green-400">{parsedBills.length} bills parsed — edit anything below, then confirm:</p>
               <div className="border border-border rounded overflow-hidden">
-                <div className="grid grid-cols-[1fr,auto,auto,auto] gap-x-3 text-[10px] font-mono text-muted-foreground uppercase px-3 py-2 bg-muted/30 border-b border-border">
-                  <span>Name</span><span>Amount</span><span>Day</span><span>Category</span>
+                <div className="grid grid-cols-[1fr,90px,60px,auto] gap-x-2 text-[10px] font-mono text-muted-foreground uppercase px-3 py-2 bg-muted/30 border-b border-border">
+                  <span>Name</span><span>Amount</span><span>Due Day</span><span></span>
                 </div>
                 <div className="divide-y divide-border max-h-[360px] overflow-y-auto">
                   {parsedBills.map((b, i) => (
-                    <div key={i} className="grid grid-cols-[1fr,auto,auto,auto] gap-x-3 items-center px-3 py-2">
-                      <span className="font-mono text-xs truncate">{b.name}</span>
-                      <span className="font-mono text-xs text-green-400">${b.amount.toFixed(2)}</span>
-                      <span className="font-mono text-xs text-muted-foreground">day {b.dueDay}</span>
-                      <span className="font-mono text-[10px] text-muted-foreground uppercase">{b.category}</span>
+                    <div key={i} className="grid grid-cols-[1fr,90px,60px,auto] gap-x-2 items-center px-3 py-1.5">
+                      <Input
+                        value={b.name}
+                        onChange={(e) => setParsedBills((prev) => prev.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))}
+                        className="font-mono text-xs h-7 bg-input border-border px-2"
+                      />
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-mono">$</span>
+                        <Input
+                          type="number"
+                          value={b.amount}
+                          onChange={(e) => setParsedBills((prev) => prev.map((x, idx) => idx === i ? { ...x, amount: parseFloat(e.target.value) || 0 } : x))}
+                          className="font-mono text-xs h-7 bg-input border-border pl-5 pr-2"
+                        />
+                      </div>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={b.dueDay}
+                        onChange={(e) => setParsedBills((prev) => prev.map((x, idx) => idx === i ? { ...x, dueDay: parseInt(e.target.value) || 1 } : x))}
+                        className="font-mono text-xs h-7 bg-input border-border px-2 text-center"
+                      />
+                      <button
+                        onClick={() => setParsedBills((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="text-muted-foreground hover:text-red-400 transition-colors p-1"
+                        title="Remove this bill"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   ))}
                 </div>
