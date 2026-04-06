@@ -222,16 +222,18 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       return;
     }
     const uniqueMonths = new Set(allTxs.map((t) => t.month)).size;
-    const existingKeys = new Set((bills || []).map((b) => normalizeName(b.name)));
-    const found = detectRecurringBills(allTxs).filter((s) => !existingKeys.has(s.key));
+    // Show ALL detected patterns — don't filter out already-tracked ones
+    // This way the user can see what's detected and what's already in their list
+    const found = detectRecurringBills(allTxs);
     if (found.length === 0) {
-      toast({ description: `Scanned ${allTxs.length} transactions across ${uniqueMonths} month${uniqueMonths !== 1 ? "s" : ""}. No new bill patterns found.` });
+      toast({ description: `Scanned ${allTxs.length} transactions across ${uniqueMonths} month${uniqueMonths !== 1 ? "s" : ""}. No recurring patterns detected.` });
       return;
     }
+    const existingKeys = new Set((bills || []).map((b) => normalizeName(b.name)));
     setSuggestions(found);
     setScanStats({ total: allTxs.length, months: uniqueMonths });
-    setSelected(new Set(found.map((s) => s.key)));
-    // Default ALL detected bills to recurring=true — user can uncheck for one-time bills
+    // Pre-select only bills NOT already tracked
+    setSelected(new Set(found.filter((s) => !existingKeys.has(s.key)).map((s) => s.key)));
     const initRecurring: Record<string, boolean> = {};
     found.forEach((s) => { initRecurring[s.key] = true; });
     setPerItemRecurring(initRecurring);
@@ -467,42 +469,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         </div>
       )}
 
-      {/* Paycheck Planner */}
-      {paycheckConfigured && allMonthBills.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-            { label: `Paycheck 1 — Day ${pc1}`, wBills: window1Bills, color: "border-primary/30" },
-            { label: `Paycheck 2 — Day ${pc2}`, wBills: window2Bills, color: "border-blue-500/30" },
-          ].map(({ label, wBills, color }) => {
-            const wTotal = wBills.reduce((s, b) => s + b.amount, 0);
-            const wPaid = wBills.filter((b) => isPaidInMonth(b, selectedMonth)).reduce((s, b) => s + b.amount, 0);
-            return (
-              <Card key={label} className={`border-2 ${color}`}>
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{label}</CardTitle>
-                    <div className="text-right">
-                      <p className="font-mono font-bold">${wTotal.toFixed(2)}</p>
-                      <p className="text-xs font-mono text-green-400">${wPaid.toFixed(2)} paid</p>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {wBills.length === 0 ? (
-                    <p className="text-xs font-mono text-muted-foreground px-4 pb-4">No bills in this window.</p>
-                  ) : (
-                    <div className="divide-y divide-border">
-                      {wBills.map((b) => <BillRow key={b.id} bill={b} compact />)}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Bill sections */}
+      {/* Bill sections — shown FIRST so they're immediately visible */}
       {allMonthBills.length === 0 ? (
         <Card className="border-dashed border-2 border-border">
           <CardContent className="flex flex-col items-center justify-center py-12 gap-4 text-center">
@@ -590,6 +557,41 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         </div>
       )}
 
+      {/* Paycheck Planner — below sections so bills are always visible first */}
+      {paycheckConfigured && allMonthBills.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[
+            { label: `Paycheck 1 — Day ${pc1}`, wBills: window1Bills, color: "border-primary/30" },
+            { label: `Paycheck 2 — Day ${pc2}`, wBills: window2Bills, color: "border-blue-500/30" },
+          ].map(({ label, wBills, color }) => {
+            const wTotal = wBills.reduce((s, b) => s + b.amount, 0);
+            const wPaid = wBills.filter((b) => isPaidInMonth(b, selectedMonth)).reduce((s, b) => s + b.amount, 0);
+            return (
+              <Card key={label} className={`border-2 ${color}`}>
+                <CardHeader className="pb-2">
+                  <div className="flex justify-between items-start">
+                    <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{label}</CardTitle>
+                    <div className="text-right">
+                      <p className="font-mono font-bold">${wTotal.toFixed(2)}</p>
+                      <p className="text-xs font-mono text-green-400">${wPaid.toFixed(2)} paid</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {wBills.length === 0 ? (
+                    <p className="text-xs font-mono text-muted-foreground px-4 pb-4">No bills in this window.</p>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {wBills.map((b) => <BillRow key={b.id} bill={b} compact />)}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       {/* Confirm: Fix Bill Types */}
       <Dialog open={confirmAction === "fix"} onOpenChange={(o) => !o && setConfirmAction(null)}>
         <DialogContent className="sm:max-w-[400px] bg-card border-border">
@@ -611,18 +613,30 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
 
       {/* Confirm: Clear All */}
       <Dialog open={confirmAction === "clear"} onOpenChange={(o) => !o && setConfirmAction(null)}>
-        <DialogContent className="sm:max-w-[400px] bg-card border-border">
+        <DialogContent className="sm:max-w-[420px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="font-mono uppercase text-destructive tracking-wider text-sm">Clear All Bills?</DialogTitle>
           </DialogHeader>
           <p className="text-sm font-mono text-muted-foreground">
-            This will permanently delete all {(bills || []).length} bill{(bills || []).length !== 1 ? "s" : ""}. You can re-add them using Detect Bills.
+            This will permanently delete all {(bills || []).length} bill{(bills || []).length !== 1 ? "s" : ""}. Use <span className="text-primary">Clear &amp; Re-detect</span> to immediately scan your transactions for real recurring bills after clearing.
           </p>
-          <div className="flex justify-end gap-2 mt-2">
+          <div className="flex justify-end gap-2 mt-2 flex-wrap">
             <Button variant="outline" onClick={() => setConfirmAction(null)} className="font-mono text-xs uppercase">Cancel</Button>
             <Button onClick={handleClearAllBills} disabled={isRunningBulk} variant="destructive" className="font-mono text-xs uppercase">
               {isRunningBulk ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash className="w-4 h-4 mr-2" />}
               Delete All
+            </Button>
+            <Button
+              onClick={async () => {
+                setConfirmAction(null);
+                await handleClearAllBills();
+                handleScan();
+              }}
+              disabled={isRunningBulk}
+              className="font-mono text-xs uppercase bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30"
+            >
+              {isRunningBulk ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ScanSearch className="w-4 h-4 mr-2" />}
+              Clear &amp; Re-detect
             </Button>
           </div>
         </DialogContent>
@@ -714,35 +728,63 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
               </p>
             )}
           </DialogHeader>
-          <div className="space-y-1 py-2">
+          {(() => {
+            const trackedKeys = new Set((bills || []).map((b) => normalizeName(b.name)));
+            const newCount = suggestions.filter((s) => !trackedKeys.has(s.key)).length;
+            const alreadyCount = suggestions.length - newCount;
+            return (
+              <div className="flex gap-3 text-[10px] font-mono py-2">
+                <span className="text-green-400">{newCount} new</span>
+                {alreadyCount > 0 && <span className="text-blue-400">{alreadyCount} already tracked</span>}
+              </div>
+            );
+          })()}
+          <div className="space-y-1 py-1">
             <div className="grid grid-cols-[auto,1fr,auto,auto,auto] gap-x-3 text-[10px] font-mono text-muted-foreground uppercase px-1 pb-1 border-b border-border">
               <span></span><span>Name</span><span>Amount</span><span>Day</span><span>Recurring</span>
             </div>
-            {suggestions.map((s) => (
-              <div key={s.key} className={`grid grid-cols-[auto,1fr,auto,auto,auto] gap-x-3 items-center px-1 py-2 rounded ${selected.has(s.key) ? "bg-primary/5" : "opacity-50"}`}>
-                <input type="checkbox" checked={selected.has(s.key)} onChange={(e) => {
-                  const next = new Set(selected);
-                  e.target.checked ? next.add(s.key) : next.delete(s.key);
-                  setSelected(next);
-                }} className="w-4 h-4 accent-primary" />
-                <div>
-                  <p className="font-mono text-xs truncate">{s.name}</p>
-                  <p className={`text-[10px] font-mono ${s.confidence === "recurring" ? "text-green-400" : "text-yellow-400"}`}>
-                    {s.confidence === "recurring" ? `Confirmed — ${s.monthCount} months` : "Likely — 1 month"}
-                  </p>
-                </div>
-                <span className="font-mono text-xs">${s.amount.toFixed(2)}</span>
-                <span className="font-mono text-xs text-muted-foreground">{s.dueDay}</span>
-                <Switch
-                  checked={perItemRecurring[s.key] ?? s.confidence === "recurring"}
-                  onCheckedChange={(v) => setPerItemRecurring({ ...perItemRecurring, [s.key]: v })}
-                  disabled={!selected.has(s.key)}
-                />
-              </div>
-            ))}
+            {(() => {
+              const trackedKeys = new Set((bills || []).map((b) => normalizeName(b.name)));
+              return suggestions.map((s) => {
+                const alreadyTracked = trackedKeys.has(s.key);
+                return (
+                  <div key={s.key} className={`grid grid-cols-[auto,1fr,auto,auto,auto] gap-x-3 items-center px-1 py-2 rounded ${alreadyTracked ? "opacity-40" : selected.has(s.key) ? "bg-primary/5" : "opacity-50"}`}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(s.key)}
+                      disabled={alreadyTracked}
+                      onChange={(e) => {
+                        if (alreadyTracked) return;
+                        const next = new Set(selected);
+                        e.target.checked ? next.add(s.key) : next.delete(s.key);
+                        setSelected(next);
+                      }}
+                      className="w-4 h-4 accent-primary"
+                    />
+                    <div>
+                      <p className="font-mono text-xs truncate">{s.name}</p>
+                      {alreadyTracked ? (
+                        <p className="text-[10px] font-mono text-blue-400">Already tracked</p>
+                      ) : (
+                        <p className={`text-[10px] font-mono ${s.confidence === "recurring" ? "text-green-400" : "text-yellow-400"}`}>
+                          {s.confidence === "recurring" ? `Confirmed — ${s.monthCount} months` : "Likely — 1 month"}
+                        </p>
+                      )}
+                    </div>
+                    <span className="font-mono text-xs">${s.amount.toFixed(2)}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{s.dueDay}</span>
+                    <Switch
+                      checked={perItemRecurring[s.key] ?? s.confidence === "recurring"}
+                      onCheckedChange={(v) => setPerItemRecurring({ ...perItemRecurring, [s.key]: v })}
+                      disabled={!selected.has(s.key) || alreadyTracked}
+                    />
+                  </div>
+                );
+              });
+            })()}
           </div>
           <div className="flex items-center justify-between border-t border-border pt-3">
-            <span className="text-xs font-mono text-muted-foreground">{selected.size} of {suggestions.length} selected</span>
+            <span className="text-xs font-mono text-muted-foreground">{selected.size} new to add</span>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setDetectOpen(false)} className="font-mono text-xs uppercase">Cancel</Button>
               <Button onClick={handleAddSuggestions} disabled={addingAll || selected.size === 0} className="font-mono text-xs uppercase">
