@@ -1026,22 +1026,32 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                 onChange={(e) => setPasteText(e.target.value)}
                 autoFocus
               />
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => { setPasteOpen(false); setPasteText(""); }} className="font-mono text-xs uppercase">Cancel</Button>
+              <div className="flex justify-between items-center gap-2">
                 <Button
-                  onClick={() => {
-                    const result = parseBillList(pasteText);
-                    if (result.length === 0) {
-                      toast({ description: "Could not parse any bills. Make sure each bill line has a date like 03/11 and an amount like $181.39." });
-                      return;
-                    }
-                    setParsedBills(result);
-                  }}
-                  disabled={!pasteText.trim()}
-                  className="font-mono text-xs uppercase"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setParsedBills([{ name: "", amount: 0, dueDay: 1, category: "Bills" as TransactionCategory, isRecurring: true }])}
+                  className="font-mono text-xs text-muted-foreground hover:text-primary"
                 >
-                  <ScanSearch className="w-4 h-4 mr-2" /> Parse Bills
+                  <Edit2 className="w-3.5 h-3.5 mr-1.5" /> Manual Entry
                 </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => { setPasteOpen(false); setPasteText(""); }} className="font-mono text-xs uppercase">Cancel</Button>
+                  <Button
+                    onClick={() => {
+                      const result = parseBillList(pasteText);
+                      if (result.length === 0) {
+                        toast({ description: "Could not parse any bills. Make sure each bill line has a date like 03/11 and an amount like $181.39." });
+                        return;
+                      }
+                      setParsedBills(result);
+                    }}
+                    disabled={!pasteText.trim()}
+                    className="font-mono text-xs uppercase"
+                  >
+                    <ScanSearch className="w-4 h-4 mr-2" /> Parse Bills
+                  </Button>
+                </div>
               </div>
             </div>
           ) : (
@@ -1088,9 +1098,19 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                 </div>
               </div>
               <div className="flex justify-between items-center pt-1">
-                <Button variant="ghost" size="sm" onClick={() => setParsedBills([])} className="font-mono text-xs uppercase text-muted-foreground">
-                  Back to Edit
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setParsedBills([])} className="font-mono text-xs uppercase text-muted-foreground">
+                    Back to Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setParsedBills((prev) => [...prev, { name: "", amount: 0, dueDay: 1, category: "Bills" as TransactionCategory, isRecurring: true }])}
+                    className="font-mono text-xs text-primary hover:bg-primary/10"
+                  >
+                    <Edit2 className="w-3.5 h-3.5 mr-1.5" /> Add Row
+                  </Button>
+                </div>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => { setPasteOpen(false); setParsedBills([]); setPasteText(""); }} className="font-mono text-xs uppercase">Cancel</Button>
                   <Button
