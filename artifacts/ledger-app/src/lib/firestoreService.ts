@@ -13,6 +13,7 @@ import {
   Timestamp,
   setDoc,
   writeBatch,
+  deleteField,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import type { Bill, Month, Rule, Transaction, TransactionCategory } from "./types";
@@ -110,7 +111,12 @@ export async function addBill(userId: string, bill: Omit<Bill, "id" | "createdAt
 
 export async function updateBill(userId: string, billId: string, data: Partial<Bill>): Promise<void> {
   const ref = doc(db, "users", userId, "bills", billId);
-  await updateDoc(ref, { ...data, updatedAt: serverTimestamp() });
+  // Convert undefined values to deleteField() — Firestore throws on raw undefined
+  const clean: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+    clean[k] = v === undefined ? deleteField() : v;
+  }
+  await updateDoc(ref, { ...clean, updatedAt: serverTimestamp() });
 }
 
 export async function deleteBill(userId: string, billId: string): Promise<void> {

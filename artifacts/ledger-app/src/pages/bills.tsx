@@ -290,40 +290,29 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     setIsRunningBulk(true);
     setConfirmAction(null);
     let fixed = 0;
-    const txList = allTxs || [];
+    let errors = 0;
     for (const bill of bills) {
       if (!bill.isRecurring) {
-        // Try to find matching transactions by normalized name
-        const key = normalizeName(bill.name);
-        const matchingTxs = txList.filter((t) => normalizeName(t.name) === key);
-        const uniqueMonths = new Set(matchingTxs.map((t) => t.month));
-
-        if (uniqueMonths.size >= 2) {
-          // Confirmed in multiple months → definitely recurring
+        try {
+          // Promote to recurring and erase the month lock (undefined → deleteField in Firestore)
           await updateBill.mutateAsync({ id: bill.id, data: { isRecurring: true, month: undefined } });
           fixed++;
-        } else if (uniqueMonths.size === 0) {
-          // No transaction match at all → promote to recurring (we can't know better)
-          await updateBill.mutateAsync({ id: bill.id, data: { isRecurring: true, month: undefined } });
-          fixed++;
-        } else {
-          // Found in exactly one month — if that month is the bill's own month, leave it
-          // If the bill's month is blank or past, promote to recurring
-          const onlyMonth = Array.from(uniqueMonths)[0];
-          if (!bill.month || bill.month !== onlyMonth) {
-            await updateBill.mutateAsync({ id: bill.id, data: { isRecurring: true, month: undefined } });
-            fixed++;
-          }
+        } catch {
+          errors++;
         }
       }
     }
     setIsRunningBulk(false);
-    toast({
-      title: "Bills updated",
-      description: fixed > 0
-        ? `Promoted ${fixed} bill${fixed !== 1 ? "s" : ""} to Monthly Recurring. They will now appear every month.`
-        : "All bills are already correctly typed.",
-    });
+    if (errors > 0) {
+      toast({ variant: "destructive", description: `${errors} bill${errors !== 1 ? "s" : ""} failed to update. Try again.` });
+    } else {
+      toast({
+        title: "Done",
+        description: fixed > 0
+          ? `${fixed} bill${fixed !== 1 ? "s" : ""} promoted to Monthly Recurring — they will now appear every month.`
+          : "All bills are already Monthly Recurring.",
+      });
+    }
   };
 
   const handleClearAllBills = async () => {
