@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useBills, useAddBill, useUpdateBill, useDeleteBill, useTransactions } from "@/hooks/use-finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Edit2, Trash2, CheckCircle2, Circle, ScanSearch, Settings2 } from "lucide-react";
+import { Loader2, Plus, Edit2, Trash2, CheckCircle2, Circle, ScanSearch, Settings2, Wrench, Trash } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -123,6 +123,8 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState(BLANK_FORM);
+  const [confirmAction, setConfirmAction] = useState<null | "fix" | "clear">(null);
+  const [isRunningBulk, setIsRunningBulk] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("paycheckDays", JSON.stringify(paycheckDays));
@@ -231,6 +233,39 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
 
   const togglePaid = (id: string, current: boolean) => updateBill.mutate({ id, data: { isPaid: !current } });
 
+  const handleFixBillTypes = async () => {
+    if (!allTxs || !bills) return;
+    setIsRunningBulk(true);
+    setConfirmAction(null);
+    let fixed = 0;
+    for (const bill of bills) {
+      const key = normalizeName(bill.name);
+      const matchingTxs = allTxs.filter((t) => normalizeName(t.name) === key);
+      const uniqueMonths = new Set(matchingTxs.map((t) => t.month));
+      if (uniqueMonths.size >= 2 && !bill.isRecurring) {
+        await updateBill.mutateAsync({ id: bill.id, data: { isRecurring: true, month: undefined } });
+        fixed++;
+      } else if (uniqueMonths.size === 1 && bill.isRecurring) {
+        const sourceMonth = Array.from(uniqueMonths)[0];
+        await updateBill.mutateAsync({ id: bill.id, data: { isRecurring: false, month: sourceMonth } });
+        fixed++;
+      }
+    }
+    setIsRunningBulk(false);
+    toast({ title: "Bills updated", description: fixed > 0 ? `Fixed ${fixed} bill${fixed !== 1 ? "s" : ""}. Recurring bills now show every month; month-specific bills only show in their month.` : "All bills already had the correct type." });
+  };
+
+  const handleClearAllBills = async () => {
+    if (!bills) return;
+    setIsRunningBulk(true);
+    setConfirmAction(null);
+    for (const bill of bills) {
+      await deleteBill.mutateAsync(bill.id);
+    }
+    setIsRunningBulk(false);
+    toast({ description: "All bills cleared. Run Detect Bills to re-add them." });
+  };
+
   const openPaycheckSetup = () => {
     setPcInput([pc1 > 0 ? String(pc1) : "", pc2 > 0 ? String(pc2) : ""]);
     setPaycheckOpen(true);
@@ -311,6 +346,17 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           <Button variant="outline" onClick={handleScan} className="font-mono text-xs uppercase tracking-wider">
             <ScanSearch className="h-4 w-4 mr-2" /> Detect Bills
           </Button>
+          {(bills || []).length > 0 && (
+            <Button variant="outline" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
+              {isRunningBulk && confirmAction === null ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wrench className="h-4 w-4 mr-2" />}
+              Fix Bill Types
+            </Button>
+          )}
+          {(bills || []).length > 0 && (
+            <Button variant="outline" onClick={() => setConfirmAction("clear")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider border-red-500/40 text-red-400 hover:bg-red-500/10">
+              <Trash className="h-4 w-4 mr-2" /> Clear All
+            </Button>
+          )}
           <Button onClick={() => { setFormData(BLANK_FORM); setEditingId(null); setIsDialogOpen(true); }} className="font-mono text-xs uppercase tracking-wider">
             <Plus className="h-4 w-4 mr-2" /> Add Bill
           </Button>
@@ -512,6 +558,33 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setPaycheckOpen(false)} className="font-mono text-xs uppercase h-8">Cancel</Button>
             <Button onClick={savePaycheckDays} className="font-mono text-xs uppercase h-8">Save</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Dialog (Fix / Clear) */}
+      <Dialog open={confirmAction !== null} onOpenChange={(o) => { if (!o) setConfirmAction(null); }}>
+        <DialogContent className="sm:max-w-[380px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-sm tracking-wider">
+              {confirmAction === "fix" ? "Fix Bill Types" : "Clear All Bills"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-3 text-sm font-mono text-muted-foreground">
+            {confirmAction === "fix"
+              ? "This will scan your transaction history and automatically set each bill as either recurring (shows every month) or month-specific (shows only in its month). Bills found in 2+ months stay recurring; bills found in 1 month get pinned to that month."
+              : `This will permanently delete all ${(bills || []).length} tracked bills. You can re-add them using Detect Bills afterward.`}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setConfirmAction(null)} className="font-mono text-xs uppercase h-8">Cancel</Button>
+            <Button
+              onClick={confirmAction === "fix" ? handleFixBillTypes : handleClearAllBills}
+              className={`font-mono text-xs uppercase h-8 ${confirmAction === "clear" ? "bg-destructive hover:bg-destructive/90" : ""}`}
+              disabled={isRunningBulk}
+            >
+              {isRunningBulk && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
+              {confirmAction === "fix" ? "Fix Bills" : "Clear All Bills"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

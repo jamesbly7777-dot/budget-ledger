@@ -24,8 +24,17 @@ function applySkipRule(name: string): boolean {
   return skipPatterns.some((p) => p.test(name));
 }
 
+function detectIncomeCategory(name: string): IncomeCategory {
+  if (/direct deposit|payroll|salary|ddp|adp|gusto|paychex|paylocity|ach credit|oasdi|employer/i.test(name)) return "Payroll";
+  if (/zelle|venmo|paypal|cashapp|cash app|square cash/i.test(name)) return "Cash Transfer";
+  if (/1099|freelance|invoice|upwork|fiverr|etsy|stripe payout/i.test(name)) return "Gig Work";
+  if (/llc|inc|business|consulting/i.test(name)) return "Side Business";
+  return "Other Income";
+}
+
 function applyTransferRule(name: string): boolean {
-  return /transfer|zelle|venmo|paypal|cashapp|savings|deposit/i.test(name);
+  // Note: "deposit" intentionally removed — positive deposits are handled as income upstream
+  return /transfer|zelle|venmo|paypal|cashapp|savings/i.test(name);
 }
 
 function applyWasteRule(name: string): boolean {
@@ -162,7 +171,7 @@ export function runRulesEngine(
         resolvedCategory: "Uncategorized",
         status: duplicate ? "review" : "cleared",
         txType: "income",
-        incomeCategory: item.incomeCategory ?? "Other Income",
+        incomeCategory: item.incomeCategory ?? detectIncomeCategory(item.name),
         isDuplicate: duplicate,
         duplicateOf: existingDup.duplicateOf || batchDupOf,
         ruleApplied: undefined,

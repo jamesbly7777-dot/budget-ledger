@@ -5,6 +5,7 @@ export interface ParsedRow {
   name: string;
   amount: number;
   rawCategory?: string;
+  txType?: "income" | "expense";
 }
 
 export function parseCSV(file: File): Promise<ParsedRow[]> {
@@ -29,19 +30,42 @@ export function parseCSV(file: File): Promise<ParsedRow[]> {
               row["name"] ||
               ""
             ).trim();
-            const amountRaw =
-              row["Amount"] ||
-              row["amount"] ||
-              row["Debit"] ||
-              row["debit"] ||
-              row["Transaction Amount"] ||
-              "0";
-            const amount = Math.abs(parseFloat(amountRaw.replace(/[$,]/g, "")) || 0);
+
+            // Check for split debit/credit columns first (some banks export Amount, Debit, Credit separately)
+            const creditRaw = row["Credit"] || row["credit"] || row["Deposit"] || "";
+            const debitRaw = row["Debit"] || row["debit"] || row["Withdrawal"] || "";
+
+            let rawAmount: number;
+            let txType: "income" | "expense";
+
+            if (creditRaw || debitRaw) {
+              const credit = parseFloat(creditRaw.replace(/[$,]/g, "")) || 0;
+              const debit = parseFloat(debitRaw.replace(/[$,]/g, "")) || 0;
+              if (credit > 0) {
+                rawAmount = credit;
+                txType = "income";
+              } else {
+                rawAmount = debit;
+                txType = "expense";
+              }
+            } else {
+              // Single Amount column: positive = deposit (income), negative = withdrawal (expense)
+              const amountRaw =
+                row["Amount"] ||
+                row["amount"] ||
+                row["Transaction Amount"] ||
+                "0";
+              const signed = parseFloat(amountRaw.replace(/[$,]/g, "")) || 0;
+              rawAmount = Math.abs(signed);
+              // Positive means credit/deposit → income; negative means debit/withdrawal → expense
+              txType = signed > 0 ? "income" : "expense";
+            }
+
             const rawCategory =
               row["Category"] || row["category"] || row["Type"] || undefined;
 
-            if (!date || !name || amount === 0) continue;
-            parsed.push({ date, name, amount, rawCategory });
+            if (!date || !name || rawAmount === 0) continue;
+            parsed.push({ date, name, amount: rawAmount, rawCategory, txType });
           }
 
           resolve(parsed);
