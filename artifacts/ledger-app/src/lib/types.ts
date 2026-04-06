@@ -56,6 +56,7 @@ export interface Bill {
   isRecurring: boolean;
   month?: string;
   isPaid: boolean;
+  paidMonths?: string[];
   userId: string;
   createdAt: string;
   updatedAt: string;

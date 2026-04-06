@@ -3,6 +3,13 @@ import { useTransactions, useBills } from "@/hooks/use-finance";
 import { computeCategoryTotals, computeIncomeTotals } from "@/lib/firestoreService";
 import { Loader2, TrendingUp, TrendingDown, Activity, ShieldAlert, ShieldCheck, AlertTriangle, CalendarClock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { getMonthKey } from "@/lib/rulesEngine";
+import type { Bill } from "@/lib/types";
+
+function isPaidInMonth(bill: Bill, month: string): boolean {
+  if (bill.paidMonths) return bill.paidMonths.includes(month);
+  return bill.isPaid;
+}
 
 const INCOME_SOURCE_COLORS: Record<string, string> = {
   Payroll: "text-blue-400",
@@ -32,19 +39,25 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
   const incomeTotals = computeIncomeTotals(txs);
   const incomeSources = Object.entries(incomeTotals).filter(([, amount]) => amount > 0);
 
+  // Bills: use selected month for totals/coverage, real current month for upcoming/due-date display
+  const today = new Date();
+  const todayDay = today.getDate();
+  const realCurrentMonth = getMonthKey(today);
+
   const monthlyBills = (bills || []).filter((b) => b.isRecurring || b.month === selectedMonth);
   const billsTotal = monthlyBills.reduce((sum, b) => sum + b.amount, 0);
   const safeToSpend = totalIncome - billsTotal;
   const billsCoverageRate = totalIncome > 0 && billsTotal > 0 ? Math.min((totalIncome / billsTotal) * 100, 999) : null;
   const isCovered = totalIncome >= billsTotal && billsTotal > 0;
 
-  const todayDay = new Date().getDate();
-  const unpaidBills = monthlyBills.filter((b) => !b.isPaid);
-  const upcomingBills = unpaidBills
+  // Upcoming bills: use real current month bills + real today's date for due-day math
+  const currentMonthBills = (bills || []).filter((b) => b.isRecurring || b.month === realCurrentMonth);
+  const unpaidThisMonth = currentMonthBills.filter((b) => !isPaidInMonth(b, realCurrentMonth));
+  const upcomingBills = unpaidThisMonth
     .map((b) => ({ ...b, daysUntil: b.dueDay >= todayDay ? b.dueDay - todayDay : 32 - todayDay + b.dueDay }))
     .sort((a, b) => a.daysUntil - b.daysUntil)
     .slice(0, 6);
-  const overdueBills = unpaidBills.filter((b) => b.dueDay < todayDay);
+  const overdueBills = unpaidThisMonth.filter((b) => b.dueDay < todayDay);
 
   const topWaste = expenses
     .filter((t) => t.category === "Waste")
