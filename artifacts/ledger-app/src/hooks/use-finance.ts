@@ -169,3 +169,24 @@ export function useReapplyRules() {
     },
   });
 }
+
+export function useCustomCategories() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["customCategories", user?.uid],
+    queryFn: () => service.getCustomCategories(user!.uid),
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+}
+
+export function useSaveCustomCategories() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (categories: string[]) => service.saveCustomCategories(user!.uid, categories),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customCategories", user?.uid] });
+    },
+  });
+}

@@ -9,6 +9,11 @@ export type TransactionCategory =
   | "Waste"
   | "Uncategorized";
 
+export const DEFAULT_EXPENSE_CATEGORIES: string[] = [
+  "Bills", "Fuel", "Necessary", "Medical", "Shopping",
+  "Transfers", "Personal", "Waste", "Uncategorized",
+];
+
 export type IncomeCategory =
   | "Payroll"
   | "Gig Work"
@@ -33,7 +38,7 @@ export interface Transaction {
   date: string;
   name: string;
   amount: number;
-  category: TransactionCategory;
+  category: string;
   status: TransactionStatus;
   type?: TransactionType;
   incomeCategory?: IncomeCategory;
@@ -45,6 +50,7 @@ export interface Transaction {
   importedAt?: string;
   sourceFile?: string;
   isDuplicate?: boolean;
+  splitFrom?: string;
 }
 
 export interface Bill {
@@ -52,7 +58,7 @@ export interface Bill {
   name: string;
   amount: number;
   dueDay: number;
-  category: TransactionCategory;
+  category: string;
   isRecurring: boolean;
   month?: string;
   isPaid: boolean;

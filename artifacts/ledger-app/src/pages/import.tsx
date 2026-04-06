@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { useTransactions, useRules, useBulkAddTransactions, useAddBill } from "@/hooks/use-finance";
+import { useTransactions, useRules, useBulkAddTransactions, useAddBill, useCustomCategories } from "@/hooks/use-finance";
 import { parseCSV } from "@/lib/csvParser";
 import { runRulesEngine } from "@/lib/rulesEngine";
 import { ImportPreviewItem, INCOME_CATEGORIES } from "@/lib/types";
@@ -40,9 +40,15 @@ const EXPENSE_CATEGORIES = [
 export default function ImportPage({ selectedMonth, onMonthChange }: { selectedMonth: string; onMonthChange?: (m: string) => void }) {
   const { data: existingTxs } = useTransactions(); // no month filter — check ALL months for duplicates
   const { data: userRules } = useRules();
+  const { data: customCats = [] } = useCustomCategories();
   const bulkAdd = useBulkAddTransactions();
   const addBill = useAddBill();
   const { toast } = useToast();
+
+  const allExpenseCategories = [
+    ...EXPENSE_CATEGORIES,
+    ...(customCats || []).filter((c) => !EXPENSE_CATEGORIES.includes(c)),
+  ];
   const [, setLocation] = useLocation();
 
   const csvInputRef = useRef<HTMLInputElement>(null);
@@ -558,7 +564,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {EXPENSE_CATEGORIES.map((cat) => (
+                                  {allExpenseCategories.map((cat) => (
                                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                                   ))}
                                 </SelectContent>

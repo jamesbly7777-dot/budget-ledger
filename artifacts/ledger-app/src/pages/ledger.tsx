@@ -1,17 +1,23 @@
 import { useState, useMemo } from "react";
-import { useTransactions, useAddTransaction, useUpdateTransaction, useDeleteTransaction, useMonths } from "@/hooks/use-finance";
+import {
+  useTransactions, useAddTransaction, useUpdateTransaction,
+  useDeleteTransaction, useMonths, useCustomCategories, useSaveCustomCategories,
+} from "@/hooks/use-finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Search, Download, Edit2, Trash2, ScanSearch, AlertTriangle } from "lucide-react";
+import {
+  Loader2, Plus, Search, Download, Edit2, Trash2, ScanSearch,
+  AlertTriangle, Scissors, PlusCircle, X,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TransactionCategory, TransactionStatus, Transaction } from "@/lib/types";
+import { TransactionStatus, Transaction, DEFAULT_EXPENSE_CATEGORIES } from "@/lib/types";
 import { exportToCSV } from "@/lib/csvParser";
 
-const CATEGORY_COLORS: Record<string, string> = {
+const BASE_CATEGORY_COLORS: Record<string, string> = {
   Bills: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   Fuel: "bg-orange-500/20 text-orange-400 border-orange-500/30",
   Necessary: "bg-green-500/20 text-green-400 border-green-500/30",
@@ -23,16 +29,213 @@ const CATEGORY_COLORS: Record<string, string> = {
   Uncategorized: "bg-gray-500/20 text-gray-400 border-gray-500/30",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-500/20 text-yellow-400",
-  cleared: "bg-green-500/20 text-green-400",
-  review: "bg-red-500/20 text-red-400",
+function getCategoryColor(category: string): string {
+  return BASE_CATEGORY_COLORS[category] ?? "bg-violet-500/20 text-violet-400 border-violet-500/30";
+}
+
+const BLANK_FORM = {
+  date: new Date().toISOString().split("T")[0],
+  name: "",
+  amount: "",
+  category: "Uncategorized",
+  status: "cleared" as TransactionStatus,
+  note: "",
 };
 
+// ─── Category Select with inline "Add" option ─────────────────────────────────
+interface CategorySelectProps {
+  value: string;
+  onChange: (v: string) => void;
+  allCategories: string[];
+  onAdd: (cat: string) => void;
+  className?: string;
+}
+
+function CategorySelect({ value, onChange, allCategories, onAdd, className }: CategorySelectProps) {
+  const [addMode, setAddMode] = useState(false);
+  const [newCat, setNewCat] = useState("");
+
+  const handleAddCommit = () => {
+    const trimmed = newCat.trim();
+    if (!trimmed) { setAddMode(false); return; }
+    onAdd(trimmed);
+    onChange(trimmed);
+    setNewCat("");
+    setAddMode(false);
+  };
+
+  if (addMode) {
+    return (
+      <div className={`flex gap-1 ${className ?? ""}`}>
+        <Input
+          autoFocus
+          placeholder="New category name"
+          value={newCat}
+          onChange={(e) => setNewCat(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleAddCommit(); if (e.key === "Escape") setAddMode(false); }}
+          className="font-mono bg-input border-border text-sm h-9"
+        />
+        <Button size="sm" className="h-9 px-2" onClick={handleAddCommit}><PlusCircle className="w-4 h-4" /></Button>
+        <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => setAddMode(false)}><X className="w-4 h-4" /></Button>
+      </div>
+    );
+  }
+
+  return (
+    <Select value={value} onValueChange={(v) => { if (v === "__add__") { setAddMode(true); } else { onChange(v); } }}>
+      <SelectTrigger className={`font-mono bg-input border-border ${className ?? ""}`}><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {allCategories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+        <SelectItem value="__add__" className="text-primary font-mono text-xs border-t border-border mt-1 pt-1">
+          + Add custom category...
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+// ─── Split Dialog ─────────────────────────────────────────────────────────────
+interface SplitRow {
+  id: number;
+  label: string;
+  amount: string;
+  category: string;
+}
+
+interface SplitDialogProps {
+  tx: Transaction;
+  allCategories: string[];
+  onAddCategory: (cat: string) => void;
+  onConfirm: (splits: { name: string; amount: number; category: string }[]) => void;
+  onClose: () => void;
+}
+
+function SplitDialog({ tx, allCategories, onAddCategory, onConfirm, onClose }: SplitDialogProps) {
+  const [rows, setRows] = useState<SplitRow[]>([
+    { id: 1, label: tx.name, amount: "", category: tx.category },
+    { id: 2, label: tx.name, amount: "", category: "Uncategorized" },
+  ]);
+  const [saving, setSaving] = useState(false);
+
+  const original = Math.abs(tx.amount);
+  const allocated = rows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  const remaining = parseFloat((original - allocated).toFixed(2));
+  const isValid = Math.abs(remaining) < 0.005 && rows.every((r) => r.label.trim() && parseFloat(r.amount) > 0);
+
+  const updateRow = (id: number, field: keyof SplitRow, val: string) =>
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
+
+  const addRow = () =>
+    setRows((prev) => [...prev, { id: Date.now(), label: tx.name, amount: "", category: "Uncategorized" }]);
+
+  const removeRow = (id: number) =>
+    setRows((prev) => (prev.length > 2 ? prev.filter((r) => r.id !== id) : prev));
+
+  const handleConfirm = async () => {
+    if (!isValid) return;
+    setSaving(true);
+    onConfirm(rows.map((r) => ({ name: r.label.trim(), amount: parseFloat(r.amount), category: r.category })));
+  };
+
+  return (
+    <DialogContent className="sm:max-w-[520px] bg-card border-border">
+      <DialogHeader>
+        <DialogTitle className="font-mono uppercase text-primary tracking-wider text-sm flex items-center gap-2">
+          <Scissors className="w-4 h-4" /> Split Transaction
+        </DialogTitle>
+      </DialogHeader>
+
+      <div className="border border-border rounded-md p-3 bg-muted/20 mb-3">
+        <p className="font-mono text-xs text-muted-foreground uppercase tracking-wider mb-0.5">Original</p>
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-sm truncate max-w-[260px]">{tx.name}</span>
+          <span className="font-mono font-bold text-sm">${original.toFixed(2)}</span>
+        </div>
+        <p className="text-xs font-mono text-muted-foreground mt-0.5">{tx.date} · {tx.month}</p>
+      </div>
+
+      <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+        {rows.map((row, i) => (
+          <div key={row.id} className="border border-border rounded-md p-2.5 space-y-2 bg-muted/10">
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-mono text-[10px] uppercase text-muted-foreground tracking-wider">Part {i + 1}</span>
+              {rows.length > 2 && (
+                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => removeRow(row.id)}>
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-1">
+                <Label className="font-mono text-[10px] uppercase text-muted-foreground">Label</Label>
+                <Input
+                  value={row.label}
+                  onChange={(e) => updateRow(row.id, "label", e.target.value)}
+                  placeholder="e.g. Groceries"
+                  className="font-mono bg-input border-border h-8 text-sm"
+                />
+              </div>
+              <div className="grid gap-1">
+                <Label className="font-mono text-[10px] uppercase text-muted-foreground">Amount ($)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={row.amount}
+                  onChange={(e) => updateRow(row.id, "amount", e.target.value)}
+                  placeholder="0.00"
+                  className="font-mono bg-input border-border h-8 text-sm"
+                />
+              </div>
+            </div>
+            <div className="grid gap-1">
+              <Label className="font-mono text-[10px] uppercase text-muted-foreground">Category</Label>
+              <CategorySelect
+                value={row.category}
+                onChange={(v) => updateRow(row.id, "category", v)}
+                allCategories={allCategories}
+                onAdd={onAddCategory}
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between py-2 border-t border-border mt-1">
+        <Button variant="ghost" size="sm" className="font-mono text-xs text-primary" onClick={addRow}>
+          <PlusCircle className="w-3.5 h-3.5 mr-1" /> Add Part
+        </Button>
+        <div className="text-right">
+          <p className="text-xs font-mono text-muted-foreground">Remaining</p>
+          <p className={`font-mono font-bold text-sm ${remaining === 0 ? "text-emerald-400" : remaining < 0 ? "text-red-400" : "text-yellow-400"}`}>
+            ${remaining.toFixed(2)}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose} className="font-mono text-xs uppercase">Cancel</Button>
+        <Button
+          onClick={handleConfirm}
+          disabled={!isValid || saving}
+          className="font-mono text-xs uppercase"
+        >
+          {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+          Confirm Split
+        </Button>
+      </div>
+    </DialogContent>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function LedgerPage({ selectedMonth }: { selectedMonth: string }) {
   const { data: transactions, isLoading } = useTransactions(selectedMonth);
-  const { data: allTransactions } = useTransactions(); // all months — used for duplicate scan
+  const { data: allTransactions } = useTransactions();
   const { data: months } = useMonths();
+  const { data: customCats = [] } = useCustomCategories();
+  const saveCustomCats = useSaveCustomCategories();
   const addTx = useAddTransaction();
   const updateTx = useUpdateTransaction();
   const deleteTx = useDeleteTransaction();
@@ -44,8 +247,21 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [formData, setFormData] = useState(BLANK_FORM);
 
-  // Find duplicate groups across ALL months (same date + name + amount)
+  const [splitTx, setSplitTx] = useState<Transaction | null>(null);
+
+  const allCategories = useMemo(() => {
+    const extras = (customCats || []).filter((c) => !DEFAULT_EXPENSE_CATEGORIES.includes(c));
+    return [...DEFAULT_EXPENSE_CATEGORIES, ...extras];
+  }, [customCats]);
+
+  const handleAddCategory = (cat: string) => {
+    if (allCategories.includes(cat)) return;
+    const next = [...(customCats || []), cat];
+    saveCustomCats.mutate(next);
+  };
+
   const duplicateGroups = useMemo(() => {
     const all = allTransactions || [];
     const groups: Record<string, Transaction[]> = {};
@@ -56,22 +272,14 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
     }
     return Object.values(groups).filter((g) => g.length > 1);
   }, [allTransactions]);
-  
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split("T")[0],
-    name: "",
-    amount: "",
-    category: "Uncategorized" as TransactionCategory,
-    status: "cleared" as TransactionStatus,
-  });
 
   if (isLoading) {
     return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
 
   const txs = transactions || [];
-  
-  const filtered = txs.filter(t => {
+
+  const filtered = txs.filter((t) => {
     if (filterCat !== "all" && t.category !== filterCat) return false;
     if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -81,8 +289,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
 
   const handleSave = () => {
     if (!formData.name || !formData.amount) return;
-    
-    const payload = {
+    const payload: any = {
       date: formData.date,
       name: formData.name,
       amount: Math.abs(parseFloat(formData.amount)),
@@ -90,7 +297,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
       status: formData.status,
       month: selectedMonth,
     };
-
+    if (formData.note.trim()) payload.note = formData.note.trim();
     if (editingId) {
       updateTx.mutate({ id: editingId, data: payload });
     } else {
@@ -101,50 +308,63 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
   };
 
   const resetForm = () => {
-    setFormData({
-      date: new Date().toISOString().split("T")[0],
-      name: "",
-      amount: "",
-      category: "Uncategorized",
-      status: "cleared",
-    });
+    setFormData(BLANK_FORM);
     setEditingId(null);
   };
 
-  const openEdit = (tx: any) => {
+  const openEdit = (tx: Transaction) => {
     setFormData({
       date: tx.date,
       name: tx.name,
       amount: tx.amount.toString(),
       category: tx.category,
       status: tx.status,
+      note: tx.note ?? "",
     });
     setEditingId(tx.id);
     setIsDialogOpen(true);
   };
 
   const handleExport = () => {
-    exportToCSV(txs.map(t => ({
-      date: t.date,
-      name: t.name,
-      amount: t.amount,
-      category: t.category
+    exportToCSV(txs.map((t) => ({
+      date: t.date, name: t.name, amount: t.amount, category: t.category,
     })), `ledger-${selectedMonth}.csv`);
   };
 
   const handleRemoveDuplicates = async () => {
     setRemovingDups(true);
-    // For each duplicate group, keep the first (oldest by date then name) and delete the rest
     for (const group of duplicateGroups) {
       const sorted = [...group].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-      const toDelete = sorted.slice(1); // keep [0], delete the rest
-      for (const tx of toDelete) {
-        await deleteTx.mutateAsync(tx.id);
-      }
+      const toDelete = sorted.slice(1);
+      for (const tx of toDelete) { await deleteTx.mutateAsync(tx.id); }
     }
     setRemovingDups(false);
     setDupDialogOpen(false);
   };
+
+  const handleSplit = async (splits: { name: string; amount: number; category: string }[]) => {
+    if (!splitTx) return;
+    for (const s of splits) {
+      await addTx.mutateAsync({
+        date: splitTx.date,
+        name: s.name,
+        amount: s.amount,
+        category: s.category,
+        status: splitTx.status,
+        month: splitTx.month,
+        type: splitTx.type,
+        splitFrom: splitTx.id,
+      } as any);
+    }
+    await deleteTx.mutateAsync(splitTx.id);
+    setSplitTx(null);
+  };
+
+  // Filter categories available in the filter dropdown (includes custom ones found in transactions)
+  const txCategories = useMemo(() => {
+    const cats = new Set<string>(txs.map((t) => t.category));
+    return [...allCategories.filter((c) => cats.has(c)), ...Array.from(cats).filter((c) => !allCategories.includes(c))];
+  }, [txs, allCategories]);
 
   return (
     <div className="space-y-4">
@@ -165,13 +385,13 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              {Object.keys(CATEGORY_COLORS).map(c => (
+              {txCategories.map((c) => (
                 <SelectItem key={c} value={c}>{c}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <div className="text-right mr-4">
             <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Total</p>
@@ -186,7 +406,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
           <Button variant="outline" size="icon" onClick={handleExport}>
             <Download className="h-4 w-4" />
           </Button>
-          <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if(!open) resetForm(); }}>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
               <Button className="font-mono text-sm uppercase tracking-wider">
                 <Plus className="h-4 w-4 mr-2" /> Add
@@ -201,28 +421,28 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
                   <Label className="font-mono text-xs uppercase text-muted-foreground">Date</Label>
-                  <Input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="font-mono bg-input border-border" />
+                  <Input type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} className="font-mono bg-input border-border" />
                 </div>
                 <div className="grid gap-2">
                   <Label className="font-mono text-xs uppercase text-muted-foreground">Name</Label>
-                  <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="font-mono bg-input border-border" />
+                  <Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="font-mono bg-input border-border" />
                 </div>
                 <div className="grid gap-2">
                   <Label className="font-mono text-xs uppercase text-muted-foreground">Amount</Label>
-                  <Input type="number" step="0.01" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} className="font-mono bg-input border-border" />
+                  <Input type="number" step="0.01" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} className="font-mono bg-input border-border" />
                 </div>
                 <div className="grid gap-2">
                   <Label className="font-mono text-xs uppercase text-muted-foreground">Category</Label>
-                  <Select value={formData.category} onValueChange={(v: any) => setFormData({...formData, category: v})}>
-                    <SelectTrigger className="font-mono bg-input border-border"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.keys(CATEGORY_COLORS).map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <CategorySelect
+                    value={formData.category}
+                    onChange={(v) => setFormData({ ...formData, category: v })}
+                    allCategories={allCategories}
+                    onAdd={handleAddCategory}
+                  />
                 </div>
                 <div className="grid gap-2">
                   <Label className="font-mono text-xs uppercase text-muted-foreground">Status</Label>
-                  <Select value={formData.status} onValueChange={(v: any) => setFormData({...formData, status: v})}>
+                  <Select value={formData.status} onValueChange={(v: any) => setFormData({ ...formData, status: v })}>
                     <SelectTrigger className="font-mono bg-input border-border"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="cleared">Cleared</SelectItem>
@@ -230,6 +450,15 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                       <SelectItem value="review">Review</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label className="font-mono text-xs uppercase text-muted-foreground">Note / Label (optional)</Label>
+                  <Input
+                    value={formData.note}
+                    onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                    placeholder="e.g. groceries run, gift for mom..."
+                    className="font-mono bg-input border-border"
+                  />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
@@ -265,10 +494,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                     {months && months.length > 0 && (
                       <p className="text-xs text-muted-foreground/60 mt-1">
                         Data available in:{" "}
-                        {months
-                          .sort((a, b) => b.month.localeCompare(a.month))
-                          .map((m) => m.month)
-                          .join(", ")}
+                        {months.sort((a, b) => b.month.localeCompare(a.month)).map((m) => m.month).join(", ")}
                         {" "}— use the month picker above.
                       </p>
                     )}
@@ -278,17 +504,27 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                 filtered.map((tx) => (
                   <tr key={tx.id} className="border-b border-border/50 hover:bg-muted/10 transition-colors">
                     <td className="px-4 py-3 font-mono text-muted-foreground whitespace-nowrap">{tx.date}</td>
-                    <td className="px-4 py-3 font-medium max-w-[200px] truncate">{tx.name}</td>
+                    <td className="px-4 py-3 font-medium max-w-[200px]">
+                      <p className="truncate">{tx.name}</p>
+                      {tx.note && <p className="text-[10px] font-mono text-muted-foreground/70 truncate mt-0.5">{tx.note}</p>}
+                    </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <Badge variant="outline" className={`font-mono text-[10px] uppercase border ${CATEGORY_COLORS[tx.category] || CATEGORY_COLORS["Uncategorized"]}`}>
+                      <Badge variant="outline" className={`font-mono text-[10px] uppercase border ${getCategoryColor(tx.category)}`}>
                         {tx.category}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 font-mono font-bold text-right whitespace-nowrap">${tx.amount.toFixed(2)}</td>
                     <td className="px-4 py-3 text-center whitespace-nowrap">
-                      <div className={`inline-block w-2 h-2 rounded-full ${tx.status === 'cleared' ? 'bg-green-500' : tx.status === 'pending' ? 'bg-yellow-500' : 'bg-red-500'}`} title={tx.status} />
+                      <div className={`inline-block w-2 h-2 rounded-full ${tx.status === "cleared" ? "bg-green-500" : tx.status === "pending" ? "bg-yellow-500" : "bg-red-500"}`} title={tx.status} />
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <Button
+                        variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        title="Split transaction"
+                        onClick={() => setSplitTx(tx)}
+                      >
+                        <Scissors className="h-4 w-4" />
+                      </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => openEdit(tx)}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
@@ -303,6 +539,19 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
           </table>
         </div>
       </Card>
+
+      {/* Split Dialog */}
+      <Dialog open={!!splitTx} onOpenChange={(open) => { if (!open) setSplitTx(null); }}>
+        {splitTx && (
+          <SplitDialog
+            tx={splitTx}
+            allCategories={allCategories}
+            onAddCategory={handleAddCategory}
+            onConfirm={handleSplit}
+            onClose={() => setSplitTx(null)}
+          />
+        )}
+      </Dialog>
 
       {/* Duplicate Finder Dialog */}
       <Dialog open={dupDialogOpen} onOpenChange={setDupDialogOpen}>

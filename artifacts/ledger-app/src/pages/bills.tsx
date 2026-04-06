@@ -1,17 +1,18 @@
 import { useState, useEffect, useMemo } from "react";
-import { useBills, useAddBill, useUpdateBill, useDeleteBill, useTransactions } from "@/hooks/use-finance";
+import { useBills, useAddBill, useUpdateBill, useDeleteBill, useTransactions, useCustomCategories, useSaveCustomCategories } from "@/hooks/use-finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Loader2, Plus, Edit2, Trash2, CheckCircle2, Circle, ScanSearch,
   Settings2, Wrench, Trash, RefreshCw, ChevronDown, ChevronUp, ClipboardList,
+  PlusCircle, X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TransactionCategory, Transaction, Bill } from "@/lib/types";
+import { TransactionCategory, Transaction, Bill, DEFAULT_EXPENSE_CATEGORIES } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -20,7 +21,7 @@ interface SuggestedBill {
   name: string;
   amount: number;
   dueDay: number;
-  category: TransactionCategory;
+  category: string;
   monthCount: number;
   confidence: "recurring" | "likely";
   sourceMonth: string;
@@ -265,7 +266,7 @@ const CATEGORIES: TransactionCategory[] = [
 
 const BLANK_FORM = {
   name: "", amount: "", dueDay: "1",
-  category: "Bills" as TransactionCategory, isRecurring: true,
+  category: "Bills" as string, isRecurring: true,
 };
 
 export default function BillsPage({ selectedMonth }: { selectedMonth: string }) {
@@ -275,6 +276,16 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const updateBill = useUpdateBill();
   const deleteBill = useDeleteBill();
   const { toast } = useToast();
+  const { data: customCats = [] } = useCustomCategories();
+  const saveCustomCats = useSaveCustomCategories();
+
+  const allCategories = useMemo(() => {
+    const extras = (customCats || []).filter((c) => !DEFAULT_EXPENSE_CATEGORIES.includes(c));
+    return [...DEFAULT_EXPENSE_CATEGORIES, ...extras];
+  }, [customCats]);
+
+  const [addingCustomCat, setAddingCustomCat] = useState(false);
+  const [newCustomCatInput, setNewCustomCatInput] = useState("");
 
   const [paycheckDays, setPaycheckDays] = useState<[number, number]>(() => {
     try { const s = localStorage.getItem("paycheckDays"); return s ? JSON.parse(s) : [0, 0]; }
@@ -512,11 +523,13 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     const isOverdue = !paid && bill.dueDay < todayDay;
     const isDueToday = !paid && bill.dueDay === todayDay;
     const isDueSoon = !paid && bill.dueDay > todayDay && bill.dueDay - todayDay <= 3;
+    const [selYear, selMonth] = selectedMonth.split("-").map(Number);
+    const dueDateObj = new Date(selYear, selMonth - 1, bill.dueDay);
+    const formattedDate = dueDateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     return (
       <div className={`flex items-center gap-2 px-4 py-3 transition-colors hover:bg-muted/20 ${paid ? "opacity-50" : isOverdue ? "bg-red-500/5" : isDueToday ? "bg-yellow-500/5" : ""}`}>
-        <div className="flex-shrink-0 text-center min-w-[36px]">
-          <span className={`font-mono text-xs font-bold block ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-primary"}`}>{bill.dueDay}</span>
-          <span className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider">day</span>
+        <div className="flex-shrink-0 text-center min-w-[44px]">
+          <span className={`font-mono text-xs font-bold block ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-primary"}`}>{formattedDate}</span>
         </div>
         <div className="flex-1 min-w-0">
           <p className={`font-mono text-sm truncate ${paid ? "line-through text-muted-foreground" : ""}`}>{bill.name}</p>
@@ -852,10 +865,46 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             </div>
             <div className="grid gap-1.5">
               <Label className="font-mono text-xs uppercase text-muted-foreground">Category</Label>
-              <Select value={formData.category} onValueChange={(v: any) => setFormData({ ...formData, category: v })}>
-                <SelectTrigger className="font-mono bg-input border-border"><SelectValue /></SelectTrigger>
-                <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-              </Select>
+              {addingCustomCat ? (
+                <div className="flex gap-1">
+                  <Input
+                    autoFocus
+                    placeholder="New category name"
+                    value={newCustomCatInput}
+                    onChange={(e) => setNewCustomCatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const trimmed = newCustomCatInput.trim();
+                        if (trimmed && !allCategories.includes(trimmed)) {
+                          saveCustomCats.mutate([...(customCats || []), trimmed]);
+                        }
+                        if (trimmed) setFormData({ ...formData, category: trimmed as any });
+                        setNewCustomCatInput(""); setAddingCustomCat(false);
+                      }
+                      if (e.key === "Escape") setAddingCustomCat(false);
+                    }}
+                    className="font-mono bg-input border-border text-sm h-9"
+                  />
+                  <Button size="sm" className="h-9 px-2" onClick={() => {
+                    const trimmed = newCustomCatInput.trim();
+                    if (trimmed && !allCategories.includes(trimmed)) saveCustomCats.mutate([...(customCats || []), trimmed]);
+                    if (trimmed) setFormData({ ...formData, category: trimmed as any });
+                    setNewCustomCatInput(""); setAddingCustomCat(false);
+                  }}><PlusCircle className="w-4 h-4" /></Button>
+                  <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => setAddingCustomCat(false)}><X className="w-4 h-4" /></Button>
+                </div>
+              ) : (
+                <Select value={formData.category} onValueChange={(v: any) => {
+                  if (v === "__add__") { setAddingCustomCat(true); }
+                  else { setFormData({ ...formData, category: v }); }
+                }}>
+                  <SelectTrigger className="font-mono bg-input border-border"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {allCategories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    <SelectItem value="__add__" className="text-primary font-mono text-xs border-t border-border mt-1 pt-1">+ Add custom category...</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="flex items-center justify-between rounded-md border border-border px-3 py-2.5">
               <div>

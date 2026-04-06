@@ -200,23 +200,26 @@ export async function reapplyRulesToTransactions(
   return updated;
 }
 
-export function computeCategoryTotals(transactions: Transaction[]): Record<TransactionCategory, number> {
+export async function getCustomCategories(userId: string): Promise<string[]> {
+  const ref = doc(db, "users", userId, "settings", "categories");
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return [];
+  return (snap.data()?.custom as string[]) || [];
+}
+
+export async function saveCustomCategories(userId: string, categories: string[]): Promise<void> {
+  const ref = doc(db, "users", userId, "settings", "categories");
+  await setDoc(ref, { custom: categories }, { merge: true });
+}
+
+export function computeCategoryTotals(transactions: Transaction[]): Record<string, number> {
   const expenses = transactions.filter((t) => !t.type || t.type === "expense");
-  const totals: Record<TransactionCategory, number> = {
-    Bills: 0,
-    Fuel: 0,
-    Necessary: 0,
-    Medical: 0,
-    Shopping: 0,
-    Transfers: 0,
-    Personal: 0,
-    Waste: 0,
-    Uncategorized: 0,
+  const totals: Record<string, number> = {
+    Bills: 0, Fuel: 0, Necessary: 0, Medical: 0, Shopping: 0,
+    Transfers: 0, Personal: 0, Waste: 0, Uncategorized: 0,
   };
   for (const t of expenses) {
-    if (t.category in totals) {
-      totals[t.category] += Math.abs(t.amount);
-    }
+    totals[t.category] = (totals[t.category] ?? 0) + Math.abs(t.amount);
   }
   return totals;
 }

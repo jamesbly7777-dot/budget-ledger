@@ -149,11 +149,13 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
                 const isOverdue = bill.dueDay < todayDay;
                 const isDueToday = bill.dueDay === todayDay;
                 const isDueSoon = bill.daysUntil <= 3 && !isOverdue;
+                const dueDateObj = new Date(today.getFullYear(), today.getMonth(), bill.dueDay);
+                const formattedDate = dueDateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
                 return (
                   <div key={bill.id} className={`flex items-center gap-3 px-6 py-3 ${isOverdue ? "bg-red-500/5" : isDueToday ? "bg-yellow-500/5" : ""}`}>
-                    <div className="w-14 text-center">
-                      <span className={`font-mono text-lg font-bold ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-muted-foreground"}`}>
-                        {bill.dueDay}
+                    <div className="w-16 text-center">
+                      <span className={`font-mono text-sm font-bold ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-emerald-400"}`}>
+                        {formattedDate}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
