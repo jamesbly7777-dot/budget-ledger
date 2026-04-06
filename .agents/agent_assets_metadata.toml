@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "wIqUsXYNKEa7I0BExQlKs"
+uri = "file://Ledger_User_Guide.pdf"
+type = "pdf"
+title = "Ledger — User Guide & Feature Checklist"
