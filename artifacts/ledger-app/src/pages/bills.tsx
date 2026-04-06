@@ -155,13 +155,20 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
 
   const todayDay = new Date().getDate();
 
+  // "Recurring" section = explicitly recurring OR month-specific bills from ANY other month
+  // (bills added in March with isRecurring=false still show every month unless their month === the viewed month)
   const recurringBills = useMemo(
-    () => (bills || []).filter((b) => b.isRecurring).sort((a, b) => a.dueDay - b.dueDay),
-    [bills]
+    () => (bills || [])
+      .filter((b) => b.isRecurring || !b.month || b.month !== selectedMonth)
+      .sort((a, b) => a.dueDay - b.dueDay),
+    [bills, selectedMonth]
   );
 
+  // "This month only" = explicitly non-recurring AND locked to THIS specific month
   const monthSpecificBills = useMemo(
-    () => (bills || []).filter((b) => !b.isRecurring && b.month === selectedMonth).sort((a, b) => a.dueDay - b.dueDay),
+    () => (bills || [])
+      .filter((b) => !b.isRecurring && b.month === selectedMonth)
+      .sort((a, b) => a.dueDay - b.dueDay),
     [bills, selectedMonth]
   );
 

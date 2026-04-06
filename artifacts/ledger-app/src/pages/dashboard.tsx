@@ -39,19 +39,19 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
   const incomeTotals = computeIncomeTotals(txs);
   const incomeSources = Object.entries(incomeTotals).filter(([, amount]) => amount > 0);
 
-  // Bills: use selected month for totals/coverage, real current month for upcoming/due-date display
   const today = new Date();
   const todayDay = today.getDate();
   const realCurrentMonth = getMonthKey(today);
 
-  const monthlyBills = (bills || []).filter((b) => b.isRecurring || b.month === selectedMonth);
+  // Use ALL tracked bills for coverage/totals (same bills user sees in Bill Manager)
+  const monthlyBills = bills || [];
   const billsTotal = monthlyBills.reduce((sum, b) => sum + b.amount, 0);
   const safeToSpend = totalIncome - billsTotal;
   const billsCoverageRate = totalIncome > 0 && billsTotal > 0 ? Math.min((totalIncome / billsTotal) * 100, 999) : null;
   const isCovered = totalIncome >= billsTotal && billsTotal > 0;
 
-  // Upcoming bills: use real current month bills + real today's date for due-day math
-  const currentMonthBills = (bills || []).filter((b) => b.isRecurring || b.month === realCurrentMonth);
+  // Show ALL tracked bills as upcoming — every bill the user tracks matters
+  const currentMonthBills = bills || [];
   const unpaidThisMonth = currentMonthBills.filter((b) => !isPaidInMonth(b, realCurrentMonth));
   const upcomingBills = unpaidThisMonth
     .map((b) => ({ ...b, daysUntil: b.dueDay >= todayDay ? b.dueDay - todayDay : 32 - todayDay + b.dueDay }))
