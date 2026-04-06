@@ -53,10 +53,13 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
   const { data: months } = useMonths();
 
   useEffect(() => {
-    if (!selectedMonth) {
-      onMonthChange(getMonthKey(new Date()));
-    }
-  }, [selectedMonth, onMonthChange]);
+    if (selectedMonth) return; // already set by user or import redirect, don't override
+    if (months === undefined) return; // still loading — wait for real data
+    // Pick the most recent month that has actual imported data; fall back to current month
+    const sorted = [...(months ?? [])].sort((a, b) => b.month.localeCompare(a.month));
+    const latestDataMonth = sorted[0]?.month;
+    onMonthChange(latestDataMonth ?? getMonthKey(new Date()));
+  }, [selectedMonth, months, onMonthChange]);
 
   const currentMonthKey = selectedMonth || getMonthKey(new Date());
   const monthOptions = useMemo(

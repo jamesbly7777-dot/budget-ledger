@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useTransactions, useAddTransaction, useUpdateTransaction, useDeleteTransaction } from "@/hooks/use-finance";
+import { useTransactions, useAddTransaction, useUpdateTransaction, useDeleteTransaction, useMonths } from "@/hooks/use-finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function LedgerPage({ selectedMonth }: { selectedMonth: string }) {
   const { data: transactions, isLoading } = useTransactions(selectedMonth);
+  const { data: months } = useMonths();
   const addTx = useAddTransaction();
   const updateTx = useUpdateTransaction();
   const deleteTx = useDeleteTransaction();
@@ -224,7 +225,19 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground font-mono">No transactions found.</td>
+                  <td colSpan={6} className="px-4 py-8 text-center font-mono">
+                    <p className="text-muted-foreground">No transactions for this month.</p>
+                    {months && months.length > 0 && (
+                      <p className="text-xs text-muted-foreground/60 mt-1">
+                        Data available in:{" "}
+                        {months
+                          .sort((a, b) => b.month.localeCompare(a.month))
+                          .map((m) => m.month)
+                          .join(", ")}
+                        {" "}— use the month picker above.
+                      </p>
+                    )}
+                  </td>
                 </tr>
               ) : (
                 filtered.map((tx) => (
