@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useTransactions, useAddTransaction, useUpdateTransaction, useDeleteTransaction, useMonths } from "@/hooks/use-finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Search, Download, Edit2, Trash2 } from "lucide-react";
+import { Loader2, Plus, Search, Download, Edit2, Trash2, ScanSearch, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TransactionCategory, TransactionStatus } from "@/lib/types";
+import { TransactionCategory, TransactionStatus, Transaction } from "@/lib/types";
 import { exportToCSV } from "@/lib/csvParser";
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -31,6 +31,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function LedgerPage({ selectedMonth }: { selectedMonth: string }) {
   const { data: transactions, isLoading } = useTransactions(selectedMonth);
+  const { data: allTransactions } = useTransactions(); // all months — used for duplicate scan
   const { data: months } = useMonths();
   const addTx = useAddTransaction();
   const updateTx = useUpdateTransaction();
@@ -38,9 +39,23 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
 
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState<string>("all");
-  
+  const [dupDialogOpen, setDupDialogOpen] = useState(false);
+  const [removingDups, setRemovingDups] = useState(false);
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Find duplicate groups across ALL months (same date + name + amount)
+  const duplicateGroups = useMemo(() => {
+    const all = allTransactions || [];
+    const groups: Record<string, Transaction[]> = {};
+    for (const tx of all) {
+      const key = `${tx.date}|${tx.name.toLowerCase().trim()}|${Math.abs(tx.amount).toFixed(2)}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(tx);
+    }
+    return Object.values(groups).filter((g) => g.length > 1);
+  }, [allTransactions]);
   
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -117,6 +132,20 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
     })), `ledger-${selectedMonth}.csv`);
   };
 
+  const handleRemoveDuplicates = async () => {
+    setRemovingDups(true);
+    // For each duplicate group, keep the first (oldest by date then name) and delete the rest
+    for (const group of duplicateGroups) {
+      const sorted = [...group].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+      const toDelete = sorted.slice(1); // keep [0], delete the rest
+      for (const tx of toDelete) {
+        await deleteTx.mutateAsync(tx.id);
+      }
+    }
+    setRemovingDups(false);
+    setDupDialogOpen(false);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row justify-between gap-4">
@@ -148,6 +177,12 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
             <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Total</p>
             <p className="font-mono font-bold">${total.toFixed(2)}</p>
           </div>
+          {duplicateGroups.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setDupDialogOpen(true)} className="font-mono text-xs uppercase tracking-wider border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
+              <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+              {duplicateGroups.length} Dup{duplicateGroups.length !== 1 ? "s" : ""}
+            </Button>
+          )}
           <Button variant="outline" size="icon" onClick={handleExport}>
             <Download className="h-4 w-4" />
           </Button>
@@ -268,6 +303,43 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
           </table>
         </div>
       </Card>
+
+      {/* Duplicate Finder Dialog */}
+      <Dialog open={dupDialogOpen} onOpenChange={setDupDialogOpen}>
+        <DialogContent className="sm:max-w-[560px] bg-card border-border max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-yellow-400 tracking-wider text-sm flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" /> Duplicate Transactions
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs font-mono text-muted-foreground">
+            Found <span className="text-yellow-400">{duplicateGroups.length}</span> duplicate group{duplicateGroups.length !== 1 ? "s" : ""} across all months.
+            Removing keeps the earliest copy and deletes the rest.
+          </p>
+          <div className="space-y-3 py-2">
+            {duplicateGroups.map((group, i) => (
+              <div key={i} className="border border-yellow-500/20 rounded-md p-3 bg-yellow-500/5">
+                <p className="font-mono text-xs text-yellow-400 uppercase tracking-wider mb-2">{group.length} copies</p>
+                <div className="space-y-1">
+                  {group.map((tx, j) => (
+                    <div key={tx.id} className={`flex items-center justify-between text-xs font-mono ${j === 0 ? "text-foreground" : "text-muted-foreground line-through"}`}>
+                      <span>{tx.date} — {tx.name.slice(0, 35)}</span>
+                      <span className="ml-2 flex-shrink-0">${Math.abs(tx.amount).toFixed(2)} ({tx.month}) {j === 0 ? "✓ keep" : "✗ remove"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 border-t border-border pt-3">
+            <Button variant="outline" onClick={() => setDupDialogOpen(false)} className="font-mono text-xs uppercase">Cancel</Button>
+            <Button onClick={handleRemoveDuplicates} disabled={removingDups} className="font-mono text-xs uppercase bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30">
+              {removingDups ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              Remove Duplicates
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

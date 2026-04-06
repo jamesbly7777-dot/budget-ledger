@@ -37,7 +37,7 @@ const EXPENSE_CATEGORIES = [
 ];
 
 export default function ImportPage({ selectedMonth, onMonthChange }: { selectedMonth: string; onMonthChange?: (m: string) => void }) {
-  const { data: existingTxs } = useTransactions(selectedMonth);
+  const { data: existingTxs } = useTransactions(); // no month filter — check ALL months for duplicates
   const { data: userRules } = useRules();
   const bulkAdd = useBulkAddTransactions();
   const { toast } = useToast();
