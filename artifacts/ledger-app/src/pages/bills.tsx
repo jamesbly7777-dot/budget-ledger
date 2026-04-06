@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Loader2, Plus, Edit2, Trash2, CheckCircle2, Circle, ScanSearch,
-  Settings2, Wrench, Trash, RefreshCw, ChevronDown, ChevronUp,
+  Settings2, Wrench, Trash, RefreshCw, ChevronDown, ChevronUp, ClipboardList,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TransactionCategory, Transaction, Bill } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
+import { Textarea } from "@/components/ui/textarea";
 
 interface SuggestedBill {
   key: string;
@@ -172,6 +173,91 @@ function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
   return suggestions.sort((a, b) => a.dueDay - b.dueDay);
 }
 
+interface ParsedBill {
+  name: string;
+  amount: number;
+  dueDay: number;
+  category: TransactionCategory;
+  isRecurring: boolean;
+}
+
+function parseBillList(text: string): ParsedBill[] {
+  const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+
+  const getCategoryForSection = (section: string): TransactionCategory => {
+    const s = section.toLowerCase();
+    if (s.includes("medical") || s.includes("health") || s.includes("ortho") || s.includes("integris")) return "Medical";
+    if (s.includes("subscri") || s.includes("stream") || s.includes("app") || s.includes("software")) return "Bills";
+    return "Bills";
+  };
+
+  interface RawEntry { rawName: string; sectionName: string; amount: number; dueDay: number; category: TransactionCategory; }
+  const rawEntries: RawEntry[] = [];
+  let currentSectionName = "";
+  let currentSectionCategory: TransactionCategory = "Bills";
+
+  for (const line of lines) {
+    // Skip separator/decorative lines
+    if (/^[━─═=\-*_#\s]+$/.test(line)) continue;
+    // Skip lines that are only emojis or section headers with emoji prefix (but no date)
+    if (/^[\u{1F300}-\u{1FFFF}]/u.test(line) && !/\d{2}\/\d{2}/.test(line)) continue;
+
+    // Section header: ends with ":" and has no date pattern and no "$"
+    // e.g. "Vehicle:", "Medical Bills:", "Affirm:"
+    if (/^[A-Za-z\s\/&]+:$/.test(line) && !/\d{2}\/\d{2}/.test(line) && !line.includes("$")) {
+      currentSectionName = line.slice(0, -1).trim();
+      currentSectionCategory = getCategoryForSection(currentSectionName);
+      continue;
+    }
+
+    // Skip eliminated/removed items
+    if (/ELIMINATED|REMOVED|WINS|SAVINGS|❌|REPLACED/i.test(line)) continue;
+
+    // Handle "Monthly — Name: $Amount" or "~Monthly — Name: ~$Amount" (no specific date — default to day 1)
+    const monthlyMatch = line.match(/^~?monthly\s*[—\-–]+\s*(?:([^$~:]+?):\s*)?~?\$?([\d,]+(?:\.\d{1,2})?)/i);
+    if (monthlyMatch) {
+      const inlineName = monthlyMatch[1]?.trim();
+      const amount = parseFloat(monthlyMatch[2].replace(/,/g, ""));
+      const rawName = inlineName || currentSectionName;
+      if (rawName && amount > 0) {
+        rawEntries.push({ rawName, sectionName: currentSectionName, amount, dueDay: 1, category: currentSectionCategory });
+      }
+      continue;
+    }
+
+    // Bill line: "~MM/DD[–MM/DD] — [Name: ]~$Amount"
+    // Handles: exact dates, approximate dates (~), date ranges (03/22–03/23)
+    const match = line.match(/~?\d{2}\/(\d{2})(?:[–\-]\d{2}\/\d{2})?\s*[—\-–]+\s*(?:([^$~:]+?):\s*)?~?\$?([\d,]+(?:\.\d{1,2})?)/);
+    if (match) {
+      const day = parseInt(match[1], 10);
+      const inlineName = match[2]?.trim();
+      const amount = parseFloat(match[3].replace(/,/g, ""));
+      const rawName = inlineName || currentSectionName;
+      if (!rawName || amount <= 0 || day < 1 || day > 31) continue;
+      rawEntries.push({ rawName, sectionName: currentSectionName, amount, dueDay: day, category: currentSectionCategory });
+    }
+  }
+
+  // Count occurrences of the same name within each section so duplicates get ordinal suffixes
+  const sectionNameCounts: Record<string, number> = {};
+  for (const e of rawEntries) {
+    const k = `${e.sectionName}::${e.rawName}`;
+    sectionNameCounts[k] = (sectionNameCounts[k] ?? 0) + 1;
+  }
+
+  const sectionNameSeen: Record<string, number> = {};
+  const ordinals = ["1st", "2nd", "3rd", "4th", "5th", "6th"];
+
+  return rawEntries.map((e) => {
+    const k = `${e.sectionName}::${e.rawName}`;
+    const total = sectionNameCounts[k];
+    sectionNameSeen[k] = (sectionNameSeen[k] ?? 0) + 1;
+    const instance = sectionNameSeen[k];
+    const finalName = total > 1 ? `${e.rawName} (${ordinals[instance - 1] ?? `${instance}th`})` : e.rawName;
+    return { name: finalName, amount: e.amount, dueDay: e.dueDay, category: e.category, isRecurring: true };
+  });
+}
+
 const CATEGORIES: TransactionCategory[] = [
   "Bills", "Fuel", "Necessary", "Medical", "Shopping",
   "Transfers", "Personal", "Waste", "Uncategorized",
@@ -212,6 +298,11 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
 
   const [recurringCollapsed, setRecurringCollapsed] = useState(false);
   const [monthSpecificCollapsed, setMonthSpecificCollapsed] = useState(false);
+
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [parsedBills, setParsedBills] = useState<ParsedBill[]>([]);
+  const [importingPaste, setImportingPaste] = useState(false);
 
   useEffect(() => { localStorage.setItem("paycheckDays", JSON.stringify(paycheckDays)); }, [paycheckDays]);
 
@@ -505,6 +596,13 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
               <Trash className="h-4 w-4 mr-2" /> Clear All
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={() => { setPasteText(""); setParsedBills([]); setPasteOpen(true); }}
+            className="font-mono text-xs uppercase tracking-wider border-primary/40 text-primary hover:bg-primary/10"
+          >
+            <ClipboardList className="h-4 w-4 mr-2" /> Paste List
+          </Button>
           <Button onClick={() => { setFormData(BLANK_FORM); setEditingId(null); setIsDialogOpen(true); }} className="font-mono text-xs uppercase tracking-wider">
             <Plus className="h-4 w-4 mr-2" /> Add Bill
           </Button>
@@ -855,6 +953,98 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Paste Bill List Dialog */}
+      <Dialog open={pasteOpen} onOpenChange={(o) => { if (!o) { setPasteOpen(false); setParsedBills([]); setPasteText(""); } }}>
+        <DialogContent className="sm:max-w-[600px] bg-card border-border max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-primary tracking-wider text-sm">Paste Bill List</DialogTitle>
+            <p className="text-xs font-mono text-muted-foreground mt-1">
+              Paste your bills in any format — sections like <span className="text-primary">Vehicle:</span> followed by lines like <span className="text-primary">03/11 — Wells Fargo Auto Loan: $181.39</span>.
+              Multiple entries under the same section name (e.g. 4 Affirm payments) automatically get 1st/2nd/3rd labels.
+            </p>
+          </DialogHeader>
+
+          {parsedBills.length === 0 ? (
+            <div className="space-y-3">
+              <Textarea
+                className="font-mono text-xs bg-input border-border min-h-[280px] resize-none"
+                placeholder={"Vehicle:\n03/11 — Wells Fargo Auto Loan: $181.39\n03/23 — Oklahoma Motor Credit: $290.00\n\nSubscriptions:\n03/12 — ChatGPT: $21.19\n03/17 — Planet Fitness: $21.75\n\nMedical Bills:\n03/17 — Integris: $50.00"}
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => { setPasteOpen(false); setPasteText(""); }} className="font-mono text-xs uppercase">Cancel</Button>
+                <Button
+                  onClick={() => {
+                    const result = parseBillList(pasteText);
+                    if (result.length === 0) {
+                      toast({ description: "Could not parse any bills. Make sure each bill line has a date like 03/11 and an amount like $181.39." });
+                      return;
+                    }
+                    setParsedBills(result);
+                  }}
+                  disabled={!pasteText.trim()}
+                  className="font-mono text-xs uppercase"
+                >
+                  <ScanSearch className="w-4 h-4 mr-2" /> Parse Bills
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs font-mono text-green-400">{parsedBills.length} bills parsed — review and confirm:</p>
+              <div className="border border-border rounded overflow-hidden">
+                <div className="grid grid-cols-[1fr,auto,auto,auto] gap-x-3 text-[10px] font-mono text-muted-foreground uppercase px-3 py-2 bg-muted/30 border-b border-border">
+                  <span>Name</span><span>Amount</span><span>Day</span><span>Category</span>
+                </div>
+                <div className="divide-y divide-border max-h-[360px] overflow-y-auto">
+                  {parsedBills.map((b, i) => (
+                    <div key={i} className="grid grid-cols-[1fr,auto,auto,auto] gap-x-3 items-center px-3 py-2">
+                      <span className="font-mono text-xs truncate">{b.name}</span>
+                      <span className="font-mono text-xs text-green-400">${b.amount.toFixed(2)}</span>
+                      <span className="font-mono text-xs text-muted-foreground">day {b.dueDay}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground uppercase">{b.category}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-between items-center pt-1">
+                <Button variant="ghost" size="sm" onClick={() => setParsedBills([])} className="font-mono text-xs uppercase text-muted-foreground">
+                  Back to Edit
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => { setPasteOpen(false); setParsedBills([]); setPasteText(""); }} className="font-mono text-xs uppercase">Cancel</Button>
+                  <Button
+                    onClick={async () => {
+                      setImportingPaste(true);
+                      let added = 0;
+                      for (const b of parsedBills) {
+                        try {
+                          await addBill.mutateAsync({ name: b.name, amount: b.amount, dueDay: b.dueDay, category: b.category, isRecurring: true, isPaid: false });
+                          added++;
+                        } catch (e) {
+                          console.error("Failed to add bill", b.name, e);
+                        }
+                      }
+                      setImportingPaste(false);
+                      setPasteOpen(false);
+                      setParsedBills([]);
+                      setPasteText("");
+                      toast({ title: "Bills imported", description: `${added} of ${parsedBills.length} bills added successfully.` });
+                    }}
+                    disabled={importingPaste}
+                    className="font-mono text-xs uppercase"
+                  >
+                    {importingPaste ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+                    Import All {parsedBills.length} Bills
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
