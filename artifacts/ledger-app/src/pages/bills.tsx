@@ -42,6 +42,16 @@ function isPaidInMonth(bill: Bill, month: string): boolean {
   return bill.isPaid;
 }
 
+// Dates are stored as YYYY-MM-DD — extract the day portion (index 2 after splitting on "-")
+function parseDueDay(dateStr: string): number {
+  const parts = dateStr.split("-");
+  if (parts.length === 3) {
+    const d = parseInt(parts[2], 10);
+    if (d >= 1 && d <= 31) return d;
+  }
+  return 0;
+}
+
 function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
   const expenses = transactions.filter((t) => !t.type || t.type === "expense");
   const groups: Record<string, Transaction[]> = {};
@@ -57,7 +67,8 @@ function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
   for (const [key, txs] of Object.entries(groups)) {
     const uniqueMonths = new Set(txs.map((t) => t.month));
     if (uniqueMonths.size >= 2) {
-      const days = txs.map((t) => parseInt(t.date.split("/")[1] ?? "1", 10)).filter((d) => d >= 1 && d <= 31);
+      // Confirmed recurring: appeared in multiple months
+      const days = txs.map((t) => parseDueDay(t.date)).filter((d) => d > 0);
       if (!days.length) continue;
       const avgDay = days.reduce((a, b) => a + b, 0) / days.length;
       const dayStdDev = Math.sqrt(days.reduce((s, d) => s + (d - avgDay) ** 2, 0) / days.length);
@@ -73,14 +84,27 @@ function detectRecurringBills(transactions: Transaction[]): SuggestedBill[] {
       const catCounts: Record<string, number> = {};
       txs.forEach((t) => { catCounts[t.category] = (catCounts[t.category] ?? 0) + 1; });
       const bestCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0][0] as TransactionCategory;
-      suggestions.push({ key, name: bestName, amount: Math.round(avgAmount * 100) / 100, dueDay: Math.round(avgDay), category: bestCat, monthCount: uniqueMonths.size, confidence: "recurring", sourceMonth: Array.from(uniqueMonths).sort().pop() ?? "" });
+      suggestions.push({
+        key, name: bestName,
+        amount: Math.round(avgAmount * 100) / 100,
+        dueDay: Math.round(avgDay),
+        category: bestCat,
+        monthCount: uniqueMonths.size,
+        confidence: "recurring",
+        sourceMonth: Array.from(uniqueMonths).sort().pop() ?? "",
+      });
     } else {
+      // Only seen in one month — still add as "likely" recurring if amount qualifies
       const tx = txs[0];
       if (tx.category === "Transfers") continue;
       if (tx.amount < 15) continue;
-      const dueDay = parseInt(tx.date.split("/")[1] ?? "1", 10);
-      if (dueDay < 1 || dueDay > 31) continue;
-      suggestions.push({ key, name: tx.name, amount: tx.amount, dueDay, category: tx.category, monthCount: 1, confidence: "likely", sourceMonth: tx.month });
+      const dueDay = parseDueDay(tx.date);
+      if (dueDay < 1) continue;
+      suggestions.push({
+        key, name: tx.name, amount: tx.amount, dueDay,
+        category: tx.category, monthCount: 1,
+        confidence: "likely", sourceMonth: tx.month,
+      });
     }
   }
   return suggestions.sort((a, b) => a.dueDay - b.dueDay);
@@ -200,8 +224,9 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     setSuggestions(found);
     setScanStats({ total: allTxs.length, months: uniqueMonths });
     setSelected(new Set(found.map((s) => s.key)));
+    // Default ALL detected bills to recurring=true — user can uncheck for one-time bills
     const initRecurring: Record<string, boolean> = {};
-    found.forEach((s) => { initRecurring[s.key] = s.confidence === "recurring"; });
+    found.forEach((s) => { initRecurring[s.key] = true; });
     setPerItemRecurring(initRecurring);
     setDetectOpen(true);
   };
@@ -261,25 +286,44 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   };
 
   const handleFixBillTypes = async () => {
-    if (!allTxs || !bills) return;
+    if (!bills) return;
     setIsRunningBulk(true);
     setConfirmAction(null);
     let fixed = 0;
+    const txList = allTxs || [];
     for (const bill of bills) {
-      const key = normalizeName(bill.name);
-      const matchingTxs = allTxs.filter((t) => normalizeName(t.name) === key);
-      const uniqueMonths = new Set(matchingTxs.map((t) => t.month));
-      if (uniqueMonths.size >= 2 && !bill.isRecurring) {
-        await updateBill.mutateAsync({ id: bill.id, data: { isRecurring: true, month: undefined } });
-        fixed++;
-      } else if (uniqueMonths.size === 1 && bill.isRecurring && uniqueMonths.size > 0) {
-        const sourceMonth = Array.from(uniqueMonths)[0];
-        await updateBill.mutateAsync({ id: bill.id, data: { isRecurring: false, month: sourceMonth } });
-        fixed++;
+      if (!bill.isRecurring) {
+        // Try to find matching transactions by normalized name
+        const key = normalizeName(bill.name);
+        const matchingTxs = txList.filter((t) => normalizeName(t.name) === key);
+        const uniqueMonths = new Set(matchingTxs.map((t) => t.month));
+
+        if (uniqueMonths.size >= 2) {
+          // Confirmed in multiple months → definitely recurring
+          await updateBill.mutateAsync({ id: bill.id, data: { isRecurring: true, month: undefined } });
+          fixed++;
+        } else if (uniqueMonths.size === 0) {
+          // No transaction match at all → promote to recurring (we can't know better)
+          await updateBill.mutateAsync({ id: bill.id, data: { isRecurring: true, month: undefined } });
+          fixed++;
+        } else {
+          // Found in exactly one month — if that month is the bill's own month, leave it
+          // If the bill's month is blank or past, promote to recurring
+          const onlyMonth = Array.from(uniqueMonths)[0];
+          if (!bill.month || bill.month !== onlyMonth) {
+            await updateBill.mutateAsync({ id: bill.id, data: { isRecurring: true, month: undefined } });
+            fixed++;
+          }
+        }
       }
     }
     setIsRunningBulk(false);
-    toast({ title: "Bills updated", description: fixed > 0 ? `Fixed ${fixed} bill${fixed !== 1 ? "s" : ""}. Multi-month = recurring; single-month = month-specific.` : "All bills already have the correct type." });
+    toast({
+      title: "Bills updated",
+      description: fixed > 0
+        ? `Promoted ${fixed} bill${fixed !== 1 ? "s" : ""} to Monthly Recurring. They will now appear every month.`
+        : "All bills are already correctly typed.",
+    });
   };
 
   const handleClearAllBills = async () => {
@@ -467,11 +511,26 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         <Card className="border-dashed border-2 border-border">
           <CardContent className="flex flex-col items-center justify-center py-12 gap-4 text-center">
             <ScanSearch className="w-10 h-10 text-muted-foreground" />
-            <div>
-              <p className="font-mono text-sm text-muted-foreground">No bills tracked yet.</p>
-              <p className="font-mono text-xs text-muted-foreground/60 mt-1">Use Detect to find recurring bills from your transactions, or add one manually.</p>
-            </div>
-            <div className="flex gap-2">
+            {(bills || []).some((b) => !b.isRecurring) ? (
+              <div>
+                <p className="font-mono text-sm text-yellow-400">Bills exist but are locked to a specific month.</p>
+                <p className="font-mono text-xs text-muted-foreground/80 mt-1">
+                  You have {(bills || []).filter((b) => !b.isRecurring).length} bill{(bills || []).filter((b) => !b.isRecurring).length !== 1 ? "s" : ""} set as month-specific that don&apos;t appear in {selectedMonth}.
+                  Use <span className="text-yellow-400">Fix Types</span> above to promote them to Monthly Recurring so they show every month.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <p className="font-mono text-sm text-muted-foreground">No bills tracked yet.</p>
+                <p className="font-mono text-xs text-muted-foreground/60 mt-1">Use Detect to find recurring bills from your transactions, or add one manually.</p>
+              </div>
+            )}
+            <div className="flex gap-2 flex-wrap justify-center">
+              {(bills || []).some((b) => !b.isRecurring) && (
+                <Button variant="outline" size="sm" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="font-mono text-xs uppercase border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
+                  <Wrench className="h-3.5 w-3.5 mr-2" /> Fix Types Now
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={handleScan} className="font-mono text-xs uppercase">
                 <ScanSearch className="h-3.5 w-3.5 mr-2" /> Detect Bills
               </Button>
@@ -542,7 +601,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             <DialogTitle className="font-mono uppercase text-primary tracking-wider text-sm">Fix Bill Types?</DialogTitle>
           </DialogHeader>
           <p className="text-sm font-mono text-muted-foreground">
-            This will scan your transaction history and re-classify each bill. Bills found in multiple months become <span className="text-primary">Recurring</span>. Bills found in only one month become <span className="text-yellow-400">Month-Specific</span>.
+            This will promote all month-specific bills to <span className="text-primary">Monthly Recurring</span> so they appear every month. Bills confirmed in 2+ months of transactions are always promoted. Bills with no transaction match are also promoted — you can always delete specific ones after.
           </p>
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="outline" onClick={() => setConfirmAction(null)} className="font-mono text-xs uppercase">Cancel</Button>
@@ -654,7 +713,8 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
               <p className="text-xs text-muted-foreground font-mono mt-1">
                 Scanned <span className="text-primary">{scanStats.total}</span> transactions across{" "}
                 <span className="text-primary">{scanStats.months}</span> month{scanStats.months !== 1 ? "s" : ""}.
-                {" "}Recurring = confirmed multi-month pattern. Likely = appeared once.
+                {" "}All items default to <span className="text-green-400">Recurring</span> (shows every month).
+                Toggle off for one-time bills.
               </p>
             )}
           </DialogHeader>
