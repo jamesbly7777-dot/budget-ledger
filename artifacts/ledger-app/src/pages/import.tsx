@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useTransactions, useRules, useBulkAddTransactions, useAddBill, useCustomCategories } from "@/hooks/use-finance";
 import { parseCSV } from "@/lib/csvParser";
 import { runRulesEngine } from "@/lib/rulesEngine";
@@ -50,6 +50,13 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
     ...(customCats || []).filter((c) => !EXPENSE_CATEGORIES.includes(c)),
   ];
   const [, setLocation] = useLocation();
+
+  const PAGE_SIZE = 50;
+  const [previewPage, setPreviewPage] = useState(0);
+  useEffect(() => { setPreviewPage(0); }, [previewItems.length]);
+
+  const totalPages = Math.ceil(previewItems.length / PAGE_SIZE);
+  const visibleItems = previewItems.slice(previewPage * PAGE_SIZE, (previewPage + 1) * PAGE_SIZE);
 
   const csvInputRef = useRef<HTMLInputElement>(null);
   const aiInputRef = useRef<HTMLInputElement>(null);
@@ -494,7 +501,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                   </tr>
                 </thead>
                 <tbody>
-                  {previewItems.map((item) => {
+                  {visibleItems.map((item) => {
                     const isIncome = item.txType === "income";
                     return (
                       <tr
@@ -617,6 +624,37 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
               </table>
             </div>
           </Card>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-mono text-muted-foreground">
+                Showing {previewPage * PAGE_SIZE + 1}–{Math.min((previewPage + 1) * PAGE_SIZE, previewItems.length)} of {previewItems.length} transactions
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="font-mono text-xs"
+                  disabled={previewPage === 0}
+                  onClick={() => setPreviewPage((p) => p - 1)}
+                >
+                  Prev
+                </Button>
+                <span className="flex items-center font-mono text-xs text-muted-foreground px-1">
+                  {previewPage + 1} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="font-mono text-xs"
+                  disabled={previewPage >= totalPages - 1}
+                  onClick={() => setPreviewPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
