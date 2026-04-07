@@ -4,13 +4,24 @@ import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm } from "node:fs/promises";
+import { execSync } from "node:child_process";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(artifactDir, "../..");
 
 async function buildAll() {
+  // Always rebuild the frontend before bundling the API server so deployments
+  // ship the latest UI code instead of whatever was last committed to dist/
+  console.log("Building ledger-app frontend...");
+  execSync("pnpm --filter @workspace/ledger-app run build", {
+    stdio: "inherit",
+    cwd: repoRoot,
+  });
+  console.log("Frontend build complete.");
+
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
 
