@@ -38,17 +38,24 @@ const EXPENSE_CATEGORIES = [
 ];
 
 export default function ImportPage({ selectedMonth, onMonthChange }: { selectedMonth: string; onMonthChange?: (m: string) => void }) {
-  const { data: existingTxs } = useTransactions(); // no month filter — check ALL months for duplicates
+  // All state must be declared first before any derived values or effects that reference them
+  const [mode, setMode] = useState<ImportMode>("csv");
+  const [parsing, setParsing] = useState(false);
+  const [aiStage, setAiStage] = useState<"idle" | "uploading" | "analyzing" | "done">("idle");
+  const [previewItems, setPreviewItems] = useState<ImportPreviewItem[]>([]);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewIsPdf, setPreviewIsPdf] = useState(false);
+  const [previewPage, setPreviewPage] = useState(0);
+
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const aiInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: existingTxs } = useTransactions();
   const { data: userRules } = useRules();
   const { data: customCats = [] } = useCustomCategories();
   const bulkAdd = useBulkAddTransactions();
   const addBill = useAddBill();
   const { toast } = useToast();
-
-  const allExpenseCategories = [
-    ...EXPENSE_CATEGORIES,
-    ...(customCats || []).filter((c) => !EXPENSE_CATEGORIES.includes(c)),
-  ];
   const [, setLocation] = useLocation();
 
   // Limit duplicate detection to the last 90 days so it doesn't slow down as your history grows
@@ -62,22 +69,17 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
     });
   }, [existingTxs]);
 
+  const allExpenseCategories = [
+    ...EXPENSE_CATEGORIES,
+    ...(customCats || []).filter((c) => !EXPENSE_CATEGORIES.includes(c)),
+  ];
+
   const PAGE_SIZE = 50;
-  const [previewPage, setPreviewPage] = useState(0);
+  // Reset to page 0 whenever the preview item list changes (new file uploaded)
   useEffect(() => { setPreviewPage(0); }, [previewItems.length]);
 
   const totalPages = Math.ceil(previewItems.length / PAGE_SIZE);
   const visibleItems = previewItems.slice(previewPage * PAGE_SIZE, (previewPage + 1) * PAGE_SIZE);
-
-  const csvInputRef = useRef<HTMLInputElement>(null);
-  const aiInputRef = useRef<HTMLInputElement>(null);
-
-  const [mode, setMode] = useState<ImportMode>("csv");
-  const [parsing, setParsing] = useState(false);
-  const [aiStage, setAiStage] = useState<"idle" | "uploading" | "analyzing" | "done">("idle");
-  const [previewItems, setPreviewItems] = useState<ImportPreviewItem[]>([]);
-  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
-  const [previewIsPdf, setPreviewIsPdf] = useState(false);
 
   const handleCSVChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
