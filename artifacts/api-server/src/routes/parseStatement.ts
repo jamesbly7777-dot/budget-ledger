@@ -157,7 +157,29 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
 
   try {
     if (mimetype === "application/pdf") {
-      const pdfData = await pdfParse(buffer);
+      // Reject obviously invalid PDFs before attempting parse
+      if (buffer.length < 500) {
+        res.status(422).json({ error: "This file is too small to be a real bank statement PDF. Please make sure you are uploading the actual PDF file, not a shortcut or link." });
+        return;
+      }
+
+      // Check for PDF header signature
+      const header = buffer.slice(0, 5).toString("ascii");
+      if (!header.startsWith("%PDF")) {
+        res.status(422).json({ error: "This file does not appear to be a valid PDF. Please upload the original PDF file from your bank." });
+        return;
+      }
+
+      let pdfData: { text: string };
+      try {
+        pdfData = await pdfParse(buffer);
+      } catch (pdfErr: unknown) {
+        const pdfMsg = pdfErr instanceof Error ? pdfErr.message : "PDF parse failed";
+        logger.error({ pdfErr }, "PDF parse library error");
+        res.status(422).json({ error: `Could not read this PDF — it may be corrupted, password-protected, or an unsupported format. Try downloading it again from your bank, or export as CSV instead. (Detail: ${pdfMsg})` });
+        return;
+      }
+
       const fullText = pdfData.text?.trim() ?? "";
 
       if (!fullText || fullText.length < 20) {

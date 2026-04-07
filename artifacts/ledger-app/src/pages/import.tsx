@@ -203,7 +203,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "AI parsing failed";
-      toast({ variant: "destructive", title: "AI Parse Error", description: msg });
+      toast({ variant: "destructive", title: "Upload Failed", description: msg });
       setAiStage("idle");
       setPreviewImageUrl(null);
     } finally {
