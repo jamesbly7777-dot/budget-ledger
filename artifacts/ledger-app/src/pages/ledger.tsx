@@ -285,7 +285,8 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
     return true;
   });
 
-  const total = filtered.reduce((s, t) => s + t.amount, 0);
+  const expenseTotal = filtered.filter((t) => !t.type || t.type === "expense").reduce((s, t) => s + t.amount, 0);
+  const incomeTotal = filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
 
   const handleSave = () => {
     if (!formData.name || !formData.amount) return;
@@ -336,7 +337,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
     for (const group of duplicateGroups) {
       const sorted = [...group].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
       const toDelete = sorted.slice(1);
-      for (const tx of toDelete) { await deleteTx.mutateAsync(tx.id); }
+      for (const tx of toDelete) { await deleteTx.mutateAsync({ id: tx.id, month: tx.month }); }
     }
     setRemovingDups(false);
     setDupDialogOpen(false);
@@ -356,7 +357,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
         splitFrom: splitTx.id,
       } as any);
     }
-    await deleteTx.mutateAsync(splitTx.id);
+    await deleteTx.mutateAsync({ id: splitTx.id, month: splitTx.month });
     setSplitTx(null);
   };
 
@@ -393,9 +394,17 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="text-right mr-4">
-            <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Total</p>
-            <p className="font-mono font-bold">${total.toFixed(2)}</p>
+          <div className="text-right mr-4 flex gap-4">
+            {incomeTotal > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Income</p>
+                <p className="font-mono font-bold text-emerald-400">+${incomeTotal.toFixed(2)}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Expenses</p>
+              <p className="font-mono font-bold text-red-400">${expenseTotal.toFixed(2)}</p>
+            </div>
           </div>
           {duplicateGroups.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setDupDialogOpen(true)} className="font-mono text-xs uppercase tracking-wider border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
@@ -528,7 +537,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => openEdit(tx)}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => deleteTx.mutate(tx.id)}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => deleteTx.mutate({ id: tx.id, month: tx.month })}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </td>

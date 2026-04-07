@@ -269,9 +269,82 @@ const BLANK_FORM = {
   category: "Bills" as string, isRecurring: true,
 };
 
+// ─── BillRow ──────────────────────────────────────────────────────────────────
+interface BillRowProps {
+  bill: Bill;
+  compact?: boolean;
+  selectedMonth: string;
+  todayDay: number;
+  onTogglePaid: (bill: Bill) => void;
+  onEdit: (bill: Bill) => void;
+  onDelete: (id: string) => void;
+}
+
+function BillRow({ bill, compact = false, selectedMonth, todayDay, onTogglePaid, onEdit, onDelete }: BillRowProps) {
+  const paid = isPaidInMonth(bill, selectedMonth);
+  const isOverdue = !paid && bill.dueDay < todayDay;
+  const isDueToday = !paid && bill.dueDay === todayDay;
+  const isDueSoon = !paid && bill.dueDay > todayDay && bill.dueDay - todayDay <= 3;
+  const [selYear, selMonth] = selectedMonth.split("-").map(Number);
+  const dueDateObj = new Date(selYear, selMonth - 1, bill.dueDay);
+  const formattedDate = dueDateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return (
+    <div className={`flex items-center gap-2 px-4 py-3 transition-colors hover:bg-muted/20 ${paid ? "opacity-50" : isOverdue ? "bg-red-500/5" : isDueToday ? "bg-yellow-500/5" : ""}`}>
+      <div className="flex-shrink-0 text-center min-w-[44px]">
+        <span className={`font-mono text-xs font-bold block ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-primary"}`}>{formattedDate}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`font-mono text-sm truncate ${paid ? "line-through text-muted-foreground" : ""}`}>{bill.name}</p>
+        {!compact && (
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <span className="text-[10px] text-muted-foreground font-mono uppercase">{bill.category}</span>
+            {isOverdue && <span className="text-[10px] font-mono text-red-400 bg-red-500/10 px-1 rounded">OVERDUE</span>}
+            {isDueToday && <span className="text-[10px] font-mono text-yellow-400 bg-yellow-500/10 px-1 rounded">TODAY</span>}
+            {isDueSoon && <span className="text-[10px] font-mono text-orange-400 bg-orange-500/10 px-1 rounded">SOON</span>}
+          </div>
+        )}
+      </div>
+      <span className={`font-mono font-bold text-sm flex-shrink-0 ${paid ? "text-muted-foreground" : ""}`}>${bill.amount.toFixed(2)}</span>
+      <button onClick={() => onTogglePaid(bill)} className="text-muted-foreground hover:text-primary transition-colors flex-shrink-0" title={paid ? "Mark unpaid" : "Mark paid"}>
+        {paid ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Circle className="w-5 h-5" />}
+      </button>
+      {!compact && (
+        <>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary flex-shrink-0" onClick={() => onEdit(bill)} title="Edit">
+            <Edit2 className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => onDelete(bill.id)} title="Delete">
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── SectionHeader ────────────────────────────────────────────────────────────
+function SectionHeader({
+  title, count, total, paidTotal, collapsed, onToggle,
+}: { title: string; count: number; total: number; paidTotal: number; collapsed: boolean; onToggle: () => void }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-muted/10 select-none" onClick={onToggle}>
+      <div className="flex items-center gap-2">
+        {collapsed ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronUp className="w-4 h-4 text-muted-foreground" />}
+        <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{title}</span>
+        <span className="font-mono text-xs text-muted-foreground/50">({count})</span>
+      </div>
+      <div className="text-right">
+        <span className="font-mono text-sm font-bold">${total.toFixed(2)}</span>
+        {paidTotal > 0 && <span className="font-mono text-xs text-green-400 ml-2">${paidTotal.toFixed(2)} paid</span>}
+      </div>
+    </div>
+  );
+}
+
 export default function BillsPage({ selectedMonth }: { selectedMonth: string }) {
   const { data: bills, isLoading: billsLoading } = useBills();
-  const { data: allTxs, isLoading: txLoading } = useTransactions();
+  // Load all transactions in the background for Detect — do NOT block the page on this
+  const { data: allTxs } = useTransactions();
   const addBill = useAddBill();
   const updateBill = useUpdateBill();
   const deleteBill = useDeleteBill();
@@ -514,67 +587,11 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     toast({ description: `Paycheck windows set: Day ${d1} and Day ${d2}.` });
   };
 
-  if (billsLoading || txLoading) {
+  if (billsLoading) {
     return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
 
-  const BillRow = ({ bill, compact = false }: { bill: Bill; compact?: boolean }) => {
-    const paid = isPaidInMonth(bill, selectedMonth);
-    const isOverdue = !paid && bill.dueDay < todayDay;
-    const isDueToday = !paid && bill.dueDay === todayDay;
-    const isDueSoon = !paid && bill.dueDay > todayDay && bill.dueDay - todayDay <= 3;
-    const [selYear, selMonth] = selectedMonth.split("-").map(Number);
-    const dueDateObj = new Date(selYear, selMonth - 1, bill.dueDay);
-    const formattedDate = dueDateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    return (
-      <div className={`flex items-center gap-2 px-4 py-3 transition-colors hover:bg-muted/20 ${paid ? "opacity-50" : isOverdue ? "bg-red-500/5" : isDueToday ? "bg-yellow-500/5" : ""}`}>
-        <div className="flex-shrink-0 text-center min-w-[44px]">
-          <span className={`font-mono text-xs font-bold block ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-primary"}`}>{formattedDate}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className={`font-mono text-sm truncate ${paid ? "line-through text-muted-foreground" : ""}`}>{bill.name}</p>
-          {!compact && (
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <span className="text-[10px] text-muted-foreground font-mono uppercase">{bill.category}</span>
-              {isOverdue && <span className="text-[10px] font-mono text-red-400 bg-red-500/10 px-1 rounded">OVERDUE</span>}
-              {isDueToday && <span className="text-[10px] font-mono text-yellow-400 bg-yellow-500/10 px-1 rounded">TODAY</span>}
-              {isDueSoon && <span className="text-[10px] font-mono text-orange-400 bg-orange-500/10 px-1 rounded">SOON</span>}
-            </div>
-          )}
-        </div>
-        <span className={`font-mono font-bold text-sm flex-shrink-0 ${paid ? "text-muted-foreground" : ""}`}>${bill.amount.toFixed(2)}</span>
-        <button onClick={() => togglePaid(bill)} className="text-muted-foreground hover:text-primary transition-colors flex-shrink-0" title={paid ? "Mark unpaid" : "Mark paid"}>
-          {paid ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Circle className="w-5 h-5" />}
-        </button>
-        {!compact && (
-          <>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary flex-shrink-0" onClick={() => openEdit(bill)} title="Edit">
-              <Edit2 className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => handleDelete(bill.id)} title="Delete">
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </>
-        )}
-      </div>
-    );
-  };
-
-  const SectionHeader = ({
-    title, count, total, paidTotal, collapsed, onToggle,
-  }: { title: string; count: number; total: number; paidTotal: number; collapsed: boolean; onToggle: () => void }) => (
-    <div className="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-muted/10 select-none" onClick={onToggle}>
-      <div className="flex items-center gap-2">
-        {collapsed ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronUp className="w-4 h-4 text-muted-foreground" />}
-        <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{title}</span>
-        <span className="font-mono text-xs text-muted-foreground/50">({count})</span>
-      </div>
-      <div className="text-right">
-        <span className="font-mono text-sm font-bold">${total.toFixed(2)}</span>
-        {paidTotal > 0 && <span className="font-mono text-xs text-green-400 ml-2">${paidTotal.toFixed(2)} paid</span>}
-      </div>
-    </div>
-  );
+  const billRowProps = { selectedMonth, todayDay, onTogglePaid: togglePaid, onEdit: openEdit, onDelete: handleDelete };
 
   return (
     <div className="space-y-6">
@@ -698,7 +715,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                 </div>
               ) : (
                 <div className="divide-y divide-border">
-                  {recurringBills.map((b) => <BillRow key={b.id} bill={b} />)}
+                  {recurringBills.map((b) => <BillRow key={b.id} bill={b} {...billRowProps} />)}
                 </div>
               )
             )}
@@ -723,7 +740,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                 </div>
               ) : (
                 <div className="divide-y divide-border">
-                  {monthSpecificBills.map((b) => <BillRow key={b.id} bill={b} />)}
+                  {monthSpecificBills.map((b) => <BillRow key={b.id} bill={b} {...billRowProps} />)}
                 </div>
               )
             )}
@@ -756,7 +773,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                     <p className="text-xs font-mono text-muted-foreground px-4 pb-4">No bills in this window.</p>
                   ) : (
                     <div className="divide-y divide-border">
-                      {wBills.map((b) => <BillRow key={b.id} bill={b} compact />)}
+                      {wBills.map((b) => <BillRow key={b.id} bill={b} compact {...billRowProps} />)}
                     </div>
                   )}
                 </CardContent>

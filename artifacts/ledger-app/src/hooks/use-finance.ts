@@ -41,10 +41,11 @@ export function useDeleteTransaction() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => service.deleteTransaction(user!.uid, id),
-    onSuccess: () => {
+    mutationFn: ({ id, month }: { id: string; month: string }) => service.deleteTransaction(user!.uid, id),
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["transactions", user?.uid] });
       queryClient.invalidateQueries({ queryKey: ["months", user?.uid] });
+      if (variables.month) service.recalculateMonthTotals(user!.uid, variables.month);
     },
   });
 }
