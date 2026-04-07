@@ -46,6 +46,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [previewIsPdf, setPreviewIsPdf] = useState(false);
   const [previewPage, setPreviewPage] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
 
   const csvInputRef = useRef<HTMLInputElement>(null);
   const aiInputRef = useRef<HTMLInputElement>(null);
@@ -77,6 +78,15 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
   const PAGE_SIZE = 50;
   // Reset to page 0 whenever the preview item list changes (new file uploaded)
   useEffect(() => { setPreviewPage(0); }, [previewItems.length]);
+
+  // Tick elapsed seconds while AI is analyzing so user knows it's still working
+  useEffect(() => {
+    if (aiStage === "uploading" || aiStage === "analyzing") {
+      setElapsed(0);
+      const interval = setInterval(() => setElapsed((s) => s + 1), 1000);
+      return () => clearInterval(interval);
+    }
+  }, [aiStage]);
 
   const totalPages = Math.ceil(previewItems.length / PAGE_SIZE);
   const visibleItems = previewItems.slice(previewPage * PAGE_SIZE, (previewPage + 1) * PAGE_SIZE);
@@ -396,15 +406,21 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                     <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
                       <Sparkles className="w-7 h-7 text-primary animate-pulse" />
                     </div>
-                    <div className="text-center font-mono">
+                    <div className="text-center font-mono space-y-1">
                       <p className="text-sm text-primary font-bold">
                         {aiStage === "uploading" ? "Uploading..." : "Analyzing statement..."}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {aiStage === "analyzing" ? "AI is reading income + expenses" : "Sending file to AI"}
+                      <p className="text-xs text-muted-foreground">
+                        {aiStage === "analyzing" ? "AI is reading your transactions" : "Sending file to AI"}
+                      </p>
+                      <p className="text-xs text-primary/60 font-mono tabular-nums">
+                        {elapsed}s elapsed — this can take up to 90 seconds
                       </p>
                     </div>
                     <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                    <p className="text-[10px] text-muted-foreground font-mono text-center max-w-xs opacity-70">
+                      Do not close or navigate away while processing
+                    </p>
                   </>
                 ) : (
                   <>
@@ -426,7 +442,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                       Upload Statement
                     </Button>
                     <p className="text-[10px] text-muted-foreground font-mono text-center opacity-60">
-                      Supports PDF, JPG, PNG, WebP, HEIC — uses AI credits
+                      PDF, JPG, PNG, WebP, HEIC — allow 30–90 seconds to analyze
                     </p>
                   </>
                 )}
