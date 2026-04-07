@@ -477,7 +477,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
             <div className="flex items-center gap-5 text-sm font-mono flex-wrap">
               <div className="flex flex-col">
                 <span className="text-muted-foreground uppercase text-[10px] tracking-wider">Total</span>
-                <span className="font-bold text-lg">{previewItems.length}</span>
+                <span className="font-bold text-lg">{previewItems.filter((i) => i.action === "save").length}</span>
               </div>
               <div className="flex flex-col">
                 <span className="text-muted-foreground uppercase text-[10px] tracking-wider flex items-center gap-1">
@@ -485,7 +485,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                 </span>
                 <span className="font-bold text-lg text-emerald-400">
                   {incomeItems.filter((i) => i.action === "save").length}
-                  <span className="text-xs ml-1 text-muted-foreground">${totalIncome.toFixed(0)}</span>
+                  <span className="text-xs ml-1 text-muted-foreground">${totalIncome.toFixed(2)}</span>
                 </span>
               </div>
               <div className="flex flex-col">
@@ -494,7 +494,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                 </span>
                 <span className="font-bold text-lg text-red-400">
                   {expenseItems.filter((i) => i.action === "save").length}
-                  <span className="text-xs ml-1 text-muted-foreground">${totalExpense.toFixed(0)}</span>
+                  <span className="text-xs ml-1 text-muted-foreground">${totalExpense.toFixed(2)}</span>
                 </span>
               </div>
               <div className="flex flex-col">
