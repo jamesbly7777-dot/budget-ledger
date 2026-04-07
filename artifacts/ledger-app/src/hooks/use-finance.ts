@@ -30,9 +30,10 @@ export function useUpdateTransaction() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<Transaction> }) => service.updateTransaction(user!.uid, id, data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["transactions", user?.uid] });
       queryClient.invalidateQueries({ queryKey: ["months", user?.uid] });
+      if (variables.data.month) service.recalculateMonthTotals(user!.uid, variables.data.month);
     },
   });
 }
