@@ -1,7 +1,9 @@
 import { Component, type ReactNode } from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 
 interface Props {
   children: ReactNode;
+  pageName?: string;
 }
 
 interface State {
@@ -20,45 +22,37 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: { componentStack: string }) {
-    console.error("App error:", error, info.componentStack);
+    console.error("[ErrorBoundary]", this.props.pageName ?? "App", error.message, info.componentStack?.slice(0, 300));
   }
+
+  reset = () => this.setState({ hasError: false, error: null });
 
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "hsl(222 47% 7%)",
-          color: "hsl(210 40% 98%)",
-          fontFamily: "monospace",
-          padding: "2rem",
-          flexDirection: "column",
-          gap: "1rem",
-          textAlign: "center",
-        }}>
-          <div style={{ fontSize: "1.25rem", color: "hsl(0 84% 60%)" }}>
-            App failed to load
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 p-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
+            <AlertTriangle className="w-8 h-8 text-red-400" />
           </div>
-          <div style={{ fontSize: "0.75rem", color: "hsl(215 20% 65%)", maxWidth: "600px", wordBreak: "break-word" }}>
-            {this.state.error?.message}
+          <div className="space-y-2">
+            <p className="text-lg font-bold font-mono uppercase tracking-tight">
+              {this.props.pageName ? `${this.props.pageName} Error` : "Something went wrong"}
+            </p>
+            <p className="text-sm text-muted-foreground font-mono max-w-xs">
+              Your data is safe. Tap Reload to recover this page.
+            </p>
+            {this.state.error && (
+              <p className="text-[11px] text-red-400/60 font-mono mt-2 max-w-xs break-all">
+                {this.state.error.message}
+              </p>
+            )}
           </div>
           <button
-            onClick={() => window.location.reload()}
-            style={{
-              marginTop: "1rem",
-              padding: "0.5rem 1.5rem",
-              background: "hsl(217 91% 60%)",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontFamily: "monospace",
-            }}
+            onClick={this.reset}
+            className="flex items-center gap-2 px-4 py-2 rounded bg-primary text-primary-foreground font-mono text-xs uppercase tracking-wider hover:bg-primary/90 transition-colors"
           >
-            RETRY
+            <RefreshCw className="w-4 h-4" />
+            Reload Page
           </button>
         </div>
       );

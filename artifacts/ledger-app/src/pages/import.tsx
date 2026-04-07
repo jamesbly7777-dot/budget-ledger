@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useTransactions, useRules, useBulkAddTransactions, useAddBill, useCustomCategories } from "@/hooks/use-finance";
 import { parseCSV } from "@/lib/csvParser";
 import { runRulesEngine } from "@/lib/rulesEngine";
@@ -51,6 +51,17 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
   ];
   const [, setLocation] = useLocation();
 
+  // Limit duplicate detection to the last 90 days so it doesn't slow down as your history grows
+  const recentTxsForDupeCheck = useMemo(() => {
+    if (!existingTxs) return [];
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 90);
+    return existingTxs.filter((tx) => {
+      const d = new Date(tx.date);
+      return !isNaN(d.getTime()) && d >= cutoff;
+    });
+  }, [existingTxs]);
+
   const PAGE_SIZE = 50;
   const [previewPage, setPreviewPage] = useState(0);
   useEffect(() => { setPreviewPage(0); }, [previewItems.length]);
@@ -78,7 +89,10 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
     setParsing(true);
     try {
       const rows = await parseCSV(file);
-      const processed = runRulesEngine(rows, userRules || [], existingTxs || []);
+      // Yield to the browser before running the synchronous rules engine
+      // so the UI stays responsive even with large files
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      const processed = runRulesEngine(rows, userRules || [], recentTxsForDupeCheck);
       setPreviewItems(processed);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Parse failed";
@@ -159,7 +173,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
           : undefined,
       }));
 
-      const processed = runRulesEngine(parsedRows, userRules || [], existingTxs || []);
+      const processed = runRulesEngine(parsedRows, userRules || [], recentTxsForDupeCheck);
 
       const withConfidence = processed.map((item, i) => ({
         ...item,

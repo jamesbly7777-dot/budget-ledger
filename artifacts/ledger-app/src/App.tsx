@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppShell } from "@/components/layout/AppShell";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useState } from "react";
 
 import NotFound from "@/pages/not-found";
@@ -20,6 +21,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
+      retry: 1,
     },
   },
 });
@@ -32,22 +34,34 @@ function ProtectedApp() {
       <AppShell selectedMonth={selectedMonth} onMonthChange={setSelectedMonth}>
         <Switch>
           <Route path="/dashboard">
-            <DashboardPage selectedMonth={selectedMonth} />
+            <ErrorBoundary pageName="Dashboard">
+              <DashboardPage selectedMonth={selectedMonth} />
+            </ErrorBoundary>
           </Route>
           <Route path="/ledger">
-            <LedgerPage selectedMonth={selectedMonth} />
+            <ErrorBoundary pageName="Ledger">
+              <LedgerPage selectedMonth={selectedMonth} />
+            </ErrorBoundary>
           </Route>
           <Route path="/bills">
-            <BillsPage selectedMonth={selectedMonth} />
+            <ErrorBoundary pageName="Bills">
+              <BillsPage selectedMonth={selectedMonth} />
+            </ErrorBoundary>
           </Route>
           <Route path="/import">
-            <ImportPage selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+            <ErrorBoundary pageName="Import">
+              <ImportPage selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+            </ErrorBoundary>
           </Route>
           <Route path="/analytics">
-            <AnalyticsPage selectedMonth={selectedMonth} />
+            <ErrorBoundary pageName="Analytics">
+              <AnalyticsPage selectedMonth={selectedMonth} />
+            </ErrorBoundary>
           </Route>
           <Route path="/rules">
-            <RulesPage />
+            <ErrorBoundary pageName="Rules">
+              <RulesPage />
+            </ErrorBoundary>
           </Route>
           <Route path="/">
             <Redirect to="/dashboard" />
@@ -61,21 +75,23 @@ function ProtectedApp() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AuthProvider>
-          <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, "")}>
-            <Switch>
-              <Route path="/auth" component={AuthPage} />
-              <Route>
-                <ProtectedApp />
-              </Route>
-            </Switch>
-          </WouterRouter>
-        </AuthProvider>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ErrorBoundary pageName="App">
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <AuthProvider>
+            <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, "")}>
+              <Switch>
+                <Route path="/auth" component={AuthPage} />
+                <Route>
+                  <ProtectedApp />
+                </Route>
+              </Switch>
+            </WouterRouter>
+          </AuthProvider>
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
