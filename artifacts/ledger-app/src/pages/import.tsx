@@ -25,6 +25,31 @@ import { useLocation } from "wouter";
 
 type ImportMode = "csv" | "ai";
 
+async function compressImage(file: File, maxDimension = 1600, quality = 0.85): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const { width, height } = img;
+      const scale = Math.min(1, maxDimension / Math.max(width, height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("Canvas unavailable")); return; }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => { if (blob) resolve(blob); else reject(new Error("Compression failed")); },
+        "image/jpeg",
+        quality
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Image load failed")); };
+    img.src = objectUrl;
+  });
+}
+
 const EXPENSE_CATEGORIES = [
   "Bills",
   "Fuel",
@@ -131,18 +156,36 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
 
     const isPdf = file.type === "application/pdf";
     setPreviewIsPdf(isPdf);
-    setPreviewImageUrl(isPdf ? null : URL.createObjectURL(file));
     setAiStage("uploading");
 
     try {
+      let uploadBlob: Blob = file;
+
+      if (!isPdf) {
+        // Compress images before upload: resize to max 1600px, 85% JPEG quality.
+        // A typical 8MB phone photo becomes ~300-600KB, reducing upload and AI processing time by 5-10x.
+        try {
+          uploadBlob = await compressImage(file);
+        } catch {
+          uploadBlob = file; // fall back to original if compression fails
+        }
+      }
+
+      setPreviewImageUrl(isPdf ? null : URL.createObjectURL(uploadBlob));
+
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", uploadBlob, isPdf ? file.name : "statement.jpg");
 
       setAiStage("analyzing");
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90_000);
+
       const response = await fetch("/api/parse-statement", {
         method: "POST",
         body: formData,
-      });
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeoutId));
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ error: "Server error" }));
@@ -202,8 +245,11 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
         description: `Found ${expenseCount} expense${expenseCount !== 1 ? "s" : ""} and ${incomeCount} income transaction${incomeCount !== 1 ? "s" : ""}.`,
       });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "AI parsing failed";
-      toast({ variant: "destructive", title: "Upload Failed", description: msg });
+      const isAbort = err instanceof DOMException && err.name === "AbortError";
+      const msg = isAbort
+        ? "The request timed out after 90 seconds. Try a smaller or clearer image."
+        : err instanceof Error ? err.message : "AI parsing failed";
+      toast({ variant: "destructive", title: isAbort ? "Timed Out" : "Upload Failed", description: msg });
       setAiStage("idle");
       setPreviewImageUrl(null);
     } finally {
@@ -408,13 +454,13 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                     </div>
                     <div className="text-center font-mono space-y-1">
                       <p className="text-sm text-primary font-bold">
-                        {aiStage === "uploading" ? "Uploading..." : "Analyzing statement..."}
+                        {aiStage === "uploading" ? "Compressing & uploading..." : "Analyzing statement..."}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {aiStage === "analyzing" ? "AI is reading your transactions" : "Sending file to AI"}
+                        {aiStage === "analyzing" ? "AI is reading your transactions" : "Optimizing image for faster processing"}
                       </p>
                       <p className="text-xs text-primary/60 font-mono tabular-nums">
-                        {elapsed}s elapsed — this can take up to 90 seconds
+                        {elapsed}s elapsed — typically 10–30 seconds
                       </p>
                     </div>
                     <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -442,7 +488,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                       Upload Statement
                     </Button>
                     <p className="text-[10px] text-muted-foreground font-mono text-center opacity-60">
-                      PDF, JPG, PNG, WebP, HEIC — allow 30–90 seconds to analyze
+                      PDF, JPG, PNG, WebP, HEIC — images auto-compressed for speed
                     </p>
                   </>
                 )}

@@ -232,22 +232,33 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
       const base64 = buffer.toString("base64");
       const dataUrl = `data:${mimetype};base64,${base64}`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => abortController.abort(), 85_000);
+
+      let response;
+      try {
+        response = await openai.chat.completions.create(
           {
-            role: "user",
-            content: [
-              { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
-              { type: "text", text: "Extract every transaction from this bank statement image. Return only the JSON array." },
+            model: "gpt-4o",
+            messages: [
+              { role: "system", content: SYSTEM_PROMPT },
+              {
+                role: "user",
+                content: [
+                  { type: "image_url", image_url: { url: dataUrl, detail: "auto" } },
+                  { type: "text", text: "Extract every transaction from this bank statement image. Return only the JSON array." },
+                ],
+              },
             ],
+            max_completion_tokens: 2048,
+            temperature: 0,
+            seed: 42,
           },
-        ],
-        max_completion_tokens: 8192,
-        temperature: 0,
-        seed: 42,
-      });
+          { signal: abortController.signal }
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       const rawContent = response.choices[0]?.message?.content ?? "[]";
       logger.info({ finishReason: response.choices[0]?.finish_reason, contentLength: rawContent.length }, "Image response");
