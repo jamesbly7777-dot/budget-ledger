@@ -22,13 +22,13 @@ const openai = new OpenAI({
 
 const SYSTEM_PROMPT = `You are a bank statement parser. Extract ALL transactions from the provided bank statement image or text — both income/deposits and expenses/withdrawals.
 
-IMPORTANT: Extract EVERY visible transaction — do not skip any. Be exhaustive.
+IMPORTANT: Extract EVERY visible transaction — do not skip any. Be exhaustive. Never fabricate transactions not present in the source.
 
 Return ONLY a valid JSON array (no markdown, no explanation, no code fences) in this exact format:
 [
   {
     "date": "MM/DD/YYYY",
-    "name": "Transaction description as written",
+    "name": "Cleaned merchant name",
     "amount": 12.34,
     "type": "expense",
     "incomeSource": null,
@@ -36,70 +36,81 @@ Return ONLY a valid JSON array (no markdown, no explanation, no code fences) in 
   }
 ]
 
-Field rules:
-- date: format as MM/DD/YYYY. If the year is missing, infer it from the statement header.
-- name: use the merchant/description as written. Do NOT include card numbers, reference codes, or account numbers in the name.
-- amount: always a POSITIVE number (absolute value). Never include the dollar sign.
-- type: "expense" for money going OUT, "income" for money coming IN.
-- incomeSource: for income only — pick from: "Payroll", "Gig Work", "Cash Transfer", "Side Business", "Other Income". Set to null for expenses.
-- confidence: "high" if clearly legible, "medium" if partial, "low" if unclear.
-
 ══════════════════════════════════════════════
-THE SINGLE MOST IMPORTANT RULE: AMOUNTS
+RULE 1 — NAME CLEANING (critical)
 ══════════════════════════════════════════════
 
-Every bank statement has TWO types of dollar numbers per row:
-  1. The TRANSACTION AMOUNT — the money that moved (what you owe/received)
-  2. The RUNNING BALANCE — the account balance AFTER that transaction
+After identifying the raw description, clean it as follows before putting it in "name":
 
-You MUST always use the TRANSACTION AMOUNT. NEVER use the running balance.
+STRIP these from the name (they add noise, not meaning):
+  a) Leading prefix "PURCHASE AUTHORIZED ON MM/DD" or "PURCHASE AUTHORIZED"
+     Example: "PURCHASE AUTHORIZED ON 04/08 WALGREENS STORE OKC OK" → "WALGREENS STORE OKC OK"
+  b) Trailing "CARD XXXX" and everything after it
+     Example: "WALGREENS STORE OKC OK CARD 0590" → "WALGREENS STORE OKC OK"
+  c) Long reference codes: any sequence of 6+ digits (P586098796061092, 5336097805846263, etc.)
+     Example: "WALGREENS STORE P586098796061092" → "WALGREENS STORE"
+  d) Long hex strings (0c09674033271f181ac2b2196719436 etc.)
+  e) Trailing date stamps embedded in name ("260408" in "Dave DavesCafe FEE 260408")
+     Example: "Dave DavesCafe FEE 260408 0c09674..." → "Dave DavesCafe FEE"
+  f) Account mask patterns: "TO XXXXXXXXXX3037" → strip the X's, keep "TO ...3037" or just the label
 
-HOW TO TELL THEM APART — BY STATEMENT FORMAT:
+KEEP in the name:
+  - Merchant name and brand ("WALGREENS", "HOBBY LOBBY", "AMAZON", "SQ *FRESH CLIPS")
+  - City and state if present ("OKC OK", "OKLAHOMA CITY", "SEATTLE WA")
+  - Short meaningful suffixes like "FEE", "ONLINE", "PAYMENT"
+  - "Save As You Go Transfer Debit" → keep as-is (it is meaningful)
 
--- FORMAT A: Wells Fargo / Chase PDF Monthly Statement --
+Examples of correct name output:
+  Raw: "PURCHASE AUTHORIZED ON 04/08 WALGREENS STORE 2835 SW 2 OKLAHOMA CITY OK P586098796061092 CARD 0590"
+  Clean name: "WALGREENS STORE 2835 SW 2 OKLAHOMA CITY OK"
+
+  Raw: "Dave DavesCafe FEE 260408 0c09674033271f181ac2b2196719436"
+  Clean name: "Dave DavesCafe FEE"
+
+  Raw: "PURCHASE AUTHORIZED ON 04/07 SQ *FRESH CLIPS Oklahoma City OK 5336097805846263 CARD 0590"
+  Clean name: "SQ *FRESH CLIPS Oklahoma City OK"
+
+  Raw: "PURCHASE AUTHORIZED ON 04/07 OG&E USPAYMENTSBIL 877-306-9274 OK 5346097387954406 CARD 0590"
+  Clean name: "OG&E USPAYMENTSBIL 877-306-9274 OK"
+
+  Raw: "PURCHASE AUTHORIZED ON 04/07 Hobby Lobby Vendor San Antonio TX 5346097514852957 CARD 0590"
+  Clean name: "Hobby Lobby Vendor San Antonio TX"
+
+══════════════════════════════════════════════
+RULE 2 — AMOUNTS (critical, do not confuse)
+══════════════════════════════════════════════
+
+There are two statement layouts. Detect which one you are looking at:
+
+-- LAYOUT A: Online Account Summary (one amount column) --
+  This is the Wells Fargo website "Account Detail" view. Each row shows:
+    Date  |  Description  |  Amount
+  The ONLY dollar figure on each row is the transaction amount. Use it directly.
+  There is NO running balance column in this layout.
+  Example:
+    04/08/26  Dave DavesCafe FEE 260408...  $1.00
+    → amount = 1.00
+
+  CRITICAL: Each row's amount belongs ONLY to that row's description.
+  Never borrow an amount from an adjacent row. Each row is completely independent.
+
+-- LAYOUT B: PDF Monthly Statement (two amount columns) --
   Columns: Date | Description | Withdrawals | Deposits | Daily Balance
-  Each row looks like:
-    04/08  WALGREENS STORE 2835 SW 2 OKC OK CARD 0590    14.03         9.45
-  Here: 14.03 = Withdrawals column = TRANSACTION AMOUNT  <-- USE THIS
-        9.45 = Daily Balance column = running account balance  <-- DO NOT USE
-  KEY RULE: The RIGHTMOST number on a row is ALWAYS the Daily Balance. Ignore it.
-            The number BEFORE the Daily Balance (in the Withdrawals or Deposits column) is the transaction amount.
+  Each row ends with TWO numbers:
+    04/08  WALGREENS STORE ... CARD 0590    14.03         834.81
+  GOLDEN RULE: RIGHT number = Daily Balance (IGNORE IT). LEFT number = transaction amount (USE IT).
+  Example:
+    "DAVE DAVESCAFE FEE 260408 0c09674...    1.00    9.45"
+    → amount = 1.00  (NOT 9.45)
 
-  Another example with a deposit:
-    04/08  DIRECT DEPOSIT PAYROLL                               1500.00   2009.45
-  Here: 1500.00 = Deposits column = TRANSACTION AMOUNT  <-- USE THIS
-        2009.45 = Daily Balance  <-- DO NOT USE
+Numbers inside the description are reference codes, not amounts:
+  "WALGREENS P586098796061092 CARD 0590   14.03   834.81"
+  P586098796061092 and 0590 are card/ref numbers. Amount = 14.03.
 
--- FORMAT B: Wells Fargo / Chase Online Account Summary --
-  Columns: Date | Description | Amount (single amount column, no balance shown)
-    04/08  WALGREENS STORE  $14.03
-  Here: 14.03 = transaction amount.  <-- USE THIS (only one number, easy)
-
--- FORMAT C: Mobile App Screenshot --
-  Transaction Name                  $14.03
-  04/08/2026
-  Ending Daily Balance: $834.81
-  Here: 14.03 = transaction amount (right-aligned next to name)  <-- USE THIS
-        834.81 = account balance labeled "Ending Daily Balance"  <-- DO NOT USE
-
-CONCRETE EXAMPLE of the most common mistake to avoid:
-  Statement row: "DAVE DAVESCAFE FEE 260408 0c09674...    1.00    9.45"
-  WRONG answer: amount = 9.45  (that is the Daily Balance column)
-  CORRECT answer: amount = 1.00  (that is the Withdrawals column)
-
-GOLDEN RULE: If a transaction row ends with TWO numbers separated by whitespace,
-  the LEFT number is the transaction amount, the RIGHT number is the running balance.
-  Always use the LEFT number.
-
-Numbers inside the transaction description are reference codes, NOT amounts:
-  "PURCHASE AUTHORIZED WALGREENS P586098796061092 CARD 0590   14.03   834.81"
-  P586098796061092 and 0590 are card/reference numbers — never treat them as the amount.
-  Amount = 14.03 (the leftmost of the two trailing numbers).
-
-If an amount has a minus sign, parentheses, or appears in red = it is an expense — use the absolute value.
+If an amount has a minus sign, parentheses, or appears in red → expense, use absolute value.
 
 ══════════════════════════════════
-EXPENSE vs INCOME CLASSIFICATION
+RULE 3 — EXPENSE vs INCOME
 ══════════════════════════════════
 
 EXPENSES (type: "expense") — money going OUT:
@@ -118,6 +129,12 @@ INCOME (type: "income") — money coming IN:
   - Wells Fargo: "Money Transfer authorized on [date] From [name]" = INCOME, incomeSource: "Cash Transfer"
 - Tax refunds, bank bonuses = INCOME, incomeSource: "Other Income"
 - Anything in the Deposits/Additions column
+
+Field rules:
+- date: format as MM/DD/YYYY. If the year is missing, infer it from the statement header.
+- amount: always a POSITIVE number (absolute value). Never include the dollar sign.
+- incomeSource: for income only — pick from: "Payroll", "Gig Work", "Cash Transfer", "Side Business", "Other Income". Set to null for expenses.
+- confidence: "high" if clearly legible, "medium" if partial, "low" if unclear.
 
 ══════════════════════════════════
 EXCLUDE ENTIRELY (no JSON entry)
@@ -146,7 +163,7 @@ async function extractChunk(text: string, chunkIndex: number): Promise<RawTx[]> 
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Extract EVERY SINGLE transaction from this bank statement segment (segment ${chunkIndex + 1}). Read every line carefully. Remember: in Wells Fargo statements the LAST number on each row is the Daily Balance — use the number BEFORE it as the transaction amount. Do not skip any transaction. Return only the JSON array.\n\n---\n${text}`,
+        content: `Extract EVERY SINGLE transaction from this bank statement segment (segment ${chunkIndex + 1}). Read every line carefully. In Wells Fargo PDF statements each row ends with TWO numbers — use the LEFT one (transaction amount), ignore the RIGHT one (Daily Balance). Clean names per Rule 1: strip "PURCHASE AUTHORIZED ON MM/DD", strip "CARD XXXX", strip long reference codes (6+ digits), keep merchant name and city/state. Do not skip any transaction. Return only the JSON array.\n\n---\n${text}`,
       },
     ],
     max_completion_tokens: 8192,
@@ -169,7 +186,8 @@ async function extractChunk(text: string, chunkIndex: number): Promise<RawTx[]> 
     const jsonMatch = rawContent.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return [];
     const parsed = JSON.parse(jsonMatch[0]);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((tx: RawTx) => ({ ...tx, name: cleanName(tx.name) }));
   } catch {
     logger.error({ chunkIndex, rawContent: rawContent.slice(0, 500) }, "Failed to parse chunk JSON");
     return [];
@@ -182,6 +200,37 @@ function normalizeDate(raw: string): string {
   if (parts.length !== 3) return raw;
   const [m, d, y] = parts;
   return `${m.padStart(2, "0")}/${d.padStart(2, "0")}/${y.length === 2 ? `20${y}` : y}`;
+}
+
+// Applied server-side after GPT returns, as a safety net for names GPT didn't clean fully
+function cleanName(raw: string): string {
+  if (!raw) return raw;
+  let name = raw.trim();
+
+  // Strip "PURCHASE AUTHORIZED ON MM/DD" prefix (very common in Wells Fargo)
+  name = name.replace(/^PURCHASE\s+AUTHORIZED\s+ON\s+\d{2}\/\d{2}\s*/i, "");
+  // Strip "PURCHASE AUTHORIZED" prefix without date
+  name = name.replace(/^PURCHASE\s+AUTHORIZED\s*/i, "");
+
+  // Strip "CARD XXXX" and everything after it
+  name = name.replace(/\s+CARD\s+\d{3,6}\b.*/i, "");
+
+  // Strip P-prefixed or C-prefixed long reference codes (e.g. P586098796061092)
+  name = name.replace(/\s+[PC]\d{6,}/gi, "");
+
+  // Strip standalone long digit sequences (8+ digits) that are reference codes
+  name = name.replace(/\s+\d{8,}/g, "");
+
+  // Strip long hex strings (16+ hex chars)
+  name = name.replace(/\s+[0-9a-f]{16,}/gi, "");
+
+  // Strip trailing 6-digit date stamps like "260408"
+  name = name.replace(/\s+\d{6}\b/g, "");
+
+  // Normalize whitespace
+  name = name.replace(/\s+/g, " ").trim();
+
+  return name || raw.trim();
 }
 
 function normalizeName(raw: string): string {
@@ -298,7 +347,7 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
                   { type: "image_url", image_url: { url: dataUrl, detail: "auto" } },
                   {
                     type: "text",
-                    text: "Extract every transaction from this bank statement image. IMPORTANT: In Wells Fargo statements, each row ends with TWO numbers — the transaction amount (left) and the Daily Balance (right). Use ONLY the transaction amount (left number). Return only the JSON array.",
+                    text: "Extract every transaction from this bank statement image. First identify the layout: (A) Online Account Summary — one amount per row, use it directly; or (B) PDF Monthly Statement — two numbers per row, use the LEFT one (right is Daily Balance). Clean each name per Rule 1: strip 'PURCHASE AUTHORIZED ON MM/DD', strip 'CARD XXXX', strip long reference codes (6+ digits), keep the merchant name and city/state. Return only the JSON array.",
                   },
                 ],
               },
@@ -319,7 +368,10 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
       let transactions: RawTx[] = [];
       try {
         const jsonMatch = rawContent.match(/\[[\s\S]*\]/);
-        transactions = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+        const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+        transactions = Array.isArray(parsed)
+          ? parsed.map((tx: RawTx) => ({ ...tx, name: cleanName(tx.name) }))
+          : [];
       } catch {
         logger.error({ rawContent: rawContent.slice(0, 500) }, "Failed to parse image response JSON");
       }
