@@ -355,67 +355,96 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
       const abortController = new AbortController();
       const timeoutId = setTimeout(() => abortController.abort(), 85_000);
 
-      let response;
+      // ── Phase 1: extract a simple pipe-separated table from the image ──────
+      // The AI only has to fill a fixed-format table — no JSON, no layout decisions.
+      // Server does all the conversion, cleaning, and typing.
+      let tableText = "";
       try {
-        response = await openai.chat.completions.create(
+        const phase1 = await openai.chat.completions.create(
           {
             model: "gpt-4o",
             messages: [
-              { role: "system", content: SYSTEM_PROMPT },
               {
                 role: "user",
                 content: [
                   { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
                   {
                     type: "text",
-                    text: `Work through this in three steps. Show your work for steps 1 and 2, then end with the final JSON.
+                    text: `This is a bank statement. Output a pipe-separated table — ONE LINE PER TRANSACTION — in this exact format:
 
-STEP 1 — LIST EVERY DATE ROW:
-Scan the image top-to-bottom. For every row that has a date (MM/DD/YY or MM/DD/YYYY) in the leftmost column, output one line:
-  N. Date=XX/XX/XX | Amount=$X.XX | Desc=<raw merchant text>
-The amount is ALWAYS the dollar number at the FAR RIGHT of that same date line. Long descriptions that continue on a 2nd line below (with no date) belong to the same entry — they do NOT have their own amount. Never reuse an amount from the row above.
+DATE | AMOUNT | TYPE | RAW_DESCRIPTION
 
-STEP 2 — VERIFY COUNT:
-State how many date rows you found. Confirm each has a unique amount taken from its own line.
+Rules:
+1. DATE: the date shown in the leftmost column for that transaction (MM/DD/YY or MM/DD/YYYY).
+2. AMOUNT: the dollar number at the FAR RIGHT of that same date's row. No $ sign. Positive number only.
+   - If the layout has ONE amount column (online summary): use that number directly.
+   - If the layout has TWO amount columns (PDF statement): use the LEFT number; the right number is the running balance and must be ignored.
+3. TYPE: write "expense" if money left the account, "income" if money came in.
+4. RAW_DESCRIPTION: the full description text for that date row. If the description wraps onto a second line with no date, include the wrapped text on the SAME output line (don't split it).
 
-STEP 3 — JSON ARRAY:
-Output the cleaned JSON array. Clean names: strip "PURCHASE AUTHORIZED ON MM/DD", strip "CARD XXXX", strip reference codes (6+ digit numbers). End your response with the JSON array and nothing after it.`,
+CRITICAL RULES:
+- Each date in the left column = exactly one output line.
+- A line with NO date in the left column is a continuation of the previous transaction — do NOT give it its own output line.
+- NEVER copy the amount from one row to a different row. Each output line's AMOUNT must be the number on the FAR RIGHT of that specific date row.
+- Output NOTHING except the pipe-separated lines. No headers, no explanation, no blank lines.`,
                   },
                 ],
               },
             ],
-            max_completion_tokens: 8192,
+            max_completion_tokens: 2048,
             temperature: 0,
-            seed: 42,
           },
           { signal: abortController.signal }
         );
+        tableText = phase1.choices[0]?.message?.content ?? "";
+        logger.info({ finishReason: phase1.choices[0]?.finish_reason, tableLines: tableText.split("\n").length }, "Phase 1 table extracted");
       } finally {
         clearTimeout(timeoutId);
       }
 
-      const rawContent = response.choices[0]?.message?.content ?? "[]";
-      logger.info({ finishReason: response.choices[0]?.finish_reason, contentLength: rawContent.length }, "Image response");
+      // ── Phase 2: server-side parse of the table → RawTx[] ─────────────────
+      const transactions: RawTx[] = [];
+      for (const rawLine of tableText.split("\n")) {
+        const line = rawLine.trim();
+        if (!line) continue;
 
-      let transactions: RawTx[] = [];
-      try {
-        // Chain-of-thought responses put the JSON array last — find the final [...] block
-        const allMatches = [...rawContent.matchAll(/\[[\s\S]*?\]/g)];
-        // Try from last match backward until one parses as an array of objects
-        let parsed: RawTx[] = [];
-        for (let i = allMatches.length - 1; i >= 0; i--) {
-          try {
-            const candidate = JSON.parse(allMatches[i][0]);
-            if (Array.isArray(candidate) && (candidate.length === 0 || (candidate[0] && typeof candidate[0] === "object" && "date" in candidate[0]))) {
-              parsed = candidate;
-              break;
-            }
-          } catch { /* try next */ }
+        const parts = line.split("|").map((s) => s.trim());
+        if (parts.length < 3) continue;
+
+        const [dateRaw, amountRaw, typeRaw, ...descParts] = parts;
+        const rawDesc = descParts.join(" ").trim() || parts[2]; // fallback if only 3 cols
+
+        // Validate date
+        const date = normalizeDate(dateRaw.replace(/[^0-9/\-]/g, "").trim());
+        if (!date || date.length !== 10) continue;
+
+        // Validate amount — strip currency symbols, commas
+        const amount = parseFloat(amountRaw.replace(/[^0-9.]/g, ""));
+        if (isNaN(amount) || amount <= 0) continue;
+
+        const type: "expense" | "income" = (typeRaw ?? "").toLowerCase().includes("income") ? "income" : "expense";
+
+        // Classify incomeSource for income transactions
+        const descLower = rawDesc.toLowerCase();
+        let incomeSource: string | null = null;
+        if (type === "income") {
+          if (/payroll|salary|direct dep|dir dep/i.test(descLower)) incomeSource = "Payroll";
+          else if (/amazon flex|doordash|uber|lyft|grubhub|instacart/i.test(descLower)) incomeSource = "Gig Work";
+          else if (/transfer.*from|money transfer.*from/i.test(descLower)) incomeSource = "Cash Transfer";
+          else incomeSource = "Other Income";
         }
-        transactions = parsed.map((tx: RawTx) => ({ ...tx, name: cleanName(tx.name) }));
-      } catch {
-        logger.error({ rawContent: rawContent.slice(0, 500) }, "Failed to parse image response JSON");
+
+        transactions.push({
+          date,
+          name: cleanName(rawDesc),
+          amount,
+          type,
+          incomeSource,
+          confidence: "high",
+        });
       }
+
+      logger.info({ parsed: transactions.length, tableText: tableText.slice(0, 800) }, "Phase 2 parse complete");
 
       res.json({
         transactions,
