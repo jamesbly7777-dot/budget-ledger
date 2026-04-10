@@ -368,12 +368,23 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
                   { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
                   {
                     type: "text",
-                    text: "Extract every transaction from this bank statement image. Identify the layout: (A) Online Account Summary or (B) PDF Monthly Statement. For Layout A: each new transaction starts with a date in the left column — that date-row's dollar amount (far right) is THIS transaction's amount. Long descriptions wrap to a 2nd line with no date and no separate amount — the amount is on the 1st (dated) line only. NEVER slide an amount from row N to row N+1. For Layout B: two numbers per row — use the LEFT (transaction), ignore RIGHT (Daily Balance). Clean names per Rule 1. Return only the JSON array.",
+                    text: `Work through this in three steps. Show your work for steps 1 and 2, then end with the final JSON.
+
+STEP 1 — LIST EVERY DATE ROW:
+Scan the image top-to-bottom. For every row that has a date (MM/DD/YY or MM/DD/YYYY) in the leftmost column, output one line:
+  N. Date=XX/XX/XX | Amount=$X.XX | Desc=<raw merchant text>
+The amount is ALWAYS the dollar number at the FAR RIGHT of that same date line. Long descriptions that continue on a 2nd line below (with no date) belong to the same entry — they do NOT have their own amount. Never reuse an amount from the row above.
+
+STEP 2 — VERIFY COUNT:
+State how many date rows you found. Confirm each has a unique amount taken from its own line.
+
+STEP 3 — JSON ARRAY:
+Output the cleaned JSON array. Clean names: strip "PURCHASE AUTHORIZED ON MM/DD", strip "CARD XXXX", strip reference codes (6+ digit numbers). End your response with the JSON array and nothing after it.`,
                   },
                 ],
               },
             ],
-            max_completion_tokens: 4096,
+            max_completion_tokens: 8192,
             temperature: 0,
             seed: 42,
           },
@@ -388,11 +399,20 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
 
       let transactions: RawTx[] = [];
       try {
-        const jsonMatch = rawContent.match(/\[[\s\S]*\]/);
-        const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
-        transactions = Array.isArray(parsed)
-          ? parsed.map((tx: RawTx) => ({ ...tx, name: cleanName(tx.name) }))
-          : [];
+        // Chain-of-thought responses put the JSON array last — find the final [...] block
+        const allMatches = [...rawContent.matchAll(/\[[\s\S]*?\]/g)];
+        // Try from last match backward until one parses as an array of objects
+        let parsed: RawTx[] = [];
+        for (let i = allMatches.length - 1; i >= 0; i--) {
+          try {
+            const candidate = JSON.parse(allMatches[i][0]);
+            if (Array.isArray(candidate) && (candidate.length === 0 || (candidate[0] && typeof candidate[0] === "object" && "date" in candidate[0]))) {
+              parsed = candidate;
+              break;
+            }
+          } catch { /* try next */ }
+        }
+        transactions = parsed.map((tx: RawTx) => ({ ...tx, name: cleanName(tx.name) }));
       } catch {
         logger.error({ rawContent: rawContent.slice(0, 500) }, "Failed to parse image response JSON");
       }
