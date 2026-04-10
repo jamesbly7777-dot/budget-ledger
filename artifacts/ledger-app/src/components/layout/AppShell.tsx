@@ -18,6 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { getMonthKey, formatMonthLabel } from "@/lib/rulesEngine";
 import { useEffect, useMemo } from "react";
 
@@ -33,12 +40,12 @@ function buildMonthOptions(existingMonths: string[], currentKey: string): string
 }
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/ledger", label: "Ledger", icon: ListTodo },
-  { href: "/bills", label: "Bills", icon: Receipt },
-  { href: "/import", label: "Import", icon: Upload },
-  { href: "/analytics", label: "Analytics", icon: BarChart2 },
-  { href: "/rules", label: "Rules", icon: Settings2 },
+  { href: "/dashboard", label: "Home",     fullLabel: "Overview",   icon: LayoutDashboard },
+  { href: "/ledger",    label: "Ledger",   fullLabel: "Ledger",     icon: ListTodo },
+  { href: "/bills",     label: "Bills",    fullLabel: "Bills",      icon: Receipt },
+  { href: "/import",    label: "Import",   fullLabel: "Import",     icon: Upload },
+  { href: "/analytics", label: "Stats",   fullLabel: "Analytics",  icon: BarChart2 },
+  { href: "/rules",     label: "Rules",    fullLabel: "Rules",      icon: Settings2 },
 ];
 
 interface AppShellProps {
@@ -53,9 +60,8 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
   const { data: months } = useMonths();
 
   useEffect(() => {
-    if (selectedMonth) return; // already set by user or import redirect, don't override
-    if (months === undefined) return; // still loading — wait for real data
-    // Pick the most recent month that has actual imported data; fall back to current month
+    if (selectedMonth) return;
+    if (months === undefined) return;
     const sorted = [...(months ?? [])].sort((a, b) => b.month.localeCompare(a.month));
     const latestDataMonth = sorted[0]?.month;
     onMonthChange(latestDataMonth ?? getMonthKey(new Date()));
@@ -108,7 +114,7 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
                 }`}
               >
                 <Icon className="w-4 h-4" />
-                {item.label}
+                {item.fullLabel}
               </Link>
             );
           })}
@@ -136,30 +142,55 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
       {/* Main Content */}
       <main className="flex-1 overflow-auto pb-16 md:pb-0">
         {/* Mobile Header */}
-        <header className="md:hidden flex items-center justify-between p-4 border-b border-border bg-card">
-          <h1 className="text-lg font-bold tracking-tight text-primary font-mono uppercase">
+        <header className="md:hidden flex items-center justify-between px-3 py-2.5 border-b border-border bg-card">
+          <h1 className="text-base font-bold tracking-tight text-primary font-mono uppercase shrink-0">
             Ledger.
           </h1>
-          <Select value={currentMonthKey} onValueChange={onMonthChange}>
-            <SelectTrigger className="w-[140px] h-8 bg-input border-border font-mono text-xs">
-              <SelectValue placeholder="Select Month" />
-            </SelectTrigger>
-            <SelectContent>
-              {monthOptions.map((key) => (
-                <SelectItem key={key} value={key}>
-                  {formatMonthLabel(key)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 ml-2">
+            <Select value={currentMonthKey} onValueChange={onMonthChange}>
+              <SelectTrigger className="w-[130px] h-8 bg-input border-border font-mono text-xs">
+                <SelectValue placeholder="Select Month" />
+              </SelectTrigger>
+              <SelectContent>
+                {monthOptions.map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {formatMonthLabel(key)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* User / Logout button — mobile only */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-mono font-bold shrink-0 border border-border">
+                  {user?.email?.charAt(0).toUpperCase()}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52 bg-card border-border">
+                <div className="px-2 py-1.5">
+                  <p className="text-[11px] text-muted-foreground font-mono truncate">{user?.email}</p>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => logout()}
+                  className="text-destructive focus:text-destructive gap-2 cursor-pointer font-medium"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </header>
-        <div className="p-4 md:p-8 max-w-7xl mx-auto h-full">
+
+        <div className="p-4 md:p-8 max-w-7xl mx-auto">
           {children}
         </div>
       </main>
 
-      {/* Bottom Nav (Mobile) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 border-t border-border bg-card flex items-center justify-around px-2 z-50">
+      {/* Bottom Nav (Mobile) — 6 items, icon + short label */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[58px] border-t border-border bg-card flex items-center justify-around z-50">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = location === item.href;
@@ -167,12 +198,12 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center w-full h-full gap-1 ${
+              className={`flex flex-col items-center justify-center flex-1 h-full gap-[3px] ${
                 isActive ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <Icon className="w-5 h-5" />
-              <span className="text-[10px] font-medium">{item.label}</span>
+              <Icon className="w-[18px] h-[18px]" />
+              <span className="text-[9px] font-medium leading-none">{item.label}</span>
             </Link>
           );
         })}

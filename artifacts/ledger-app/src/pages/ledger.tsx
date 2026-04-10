@@ -393,8 +393,8 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
           </Select>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="text-right mr-4 flex gap-4">
+        <div className="flex items-center gap-2 flex-wrap justify-between sm:justify-end">
+          <div className="flex gap-4">
             {incomeTotal > 0 && (
               <div>
                 <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Income</p>
@@ -406,6 +406,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
               <p className="font-mono font-bold text-red-400">${expenseTotal.toFixed(2)}</p>
             </div>
           </div>
+          <div className="flex items-center gap-1.5">
           {duplicateGroups.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setDupDialogOpen(true)} className="font-mono text-xs uppercase tracking-wider border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
               <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
@@ -479,6 +480,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
       </div>
 
