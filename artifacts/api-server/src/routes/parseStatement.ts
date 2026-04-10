@@ -20,9 +20,9 @@ const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
 });
 
-const SYSTEM_PROMPT = `You are a bank statement parser. Extract ALL transactions (both income/deposits and expenses/withdrawals) from the provided bank statement TEXT SEGMENT.
+const SYSTEM_PROMPT = `You are a bank statement parser. Extract ALL transactions (both income/deposits and expenses/withdrawals) from the provided bank statement image or text.
 
-IMPORTANT: This may be a SEGMENT of a longer statement. Extract every transaction you can find in this segment — do not skip any. Be exhaustive.
+IMPORTANT: Extract every transaction — do not skip any. Be exhaustive.
 
 Return ONLY a valid JSON array (no markdown, no explanation) with this exact structure:
 [
@@ -39,10 +39,18 @@ Return ONLY a valid JSON array (no markdown, no explanation) with this exact str
 Field rules:
 - date: format as MM/DD/YYYY. If year is missing, use the statement year shown in the header.
 - name: use the exact merchant/description from the statement
-- amount: always a POSITIVE number (absolute value). Never include the dollar sign.
+- amount: CRITICAL — always a POSITIVE number (absolute value). Never include the dollar sign. See amount rules below.
 - type: "expense" for money going OUT, "income" for money coming IN
 - incomeSource: only for income, pick from: "Payroll", "Gig Work", "Cash Transfer", "Side Business", "Other Income". Set to null for expenses.
 - confidence: "high" if clearly legible, "medium" if partial, "low" if unclear
+
+AMOUNT EXTRACTION — CRITICAL RULES:
+- The amount is the TRANSACTION amount — the money that moved for that specific transaction
+- NEVER use the running balance, ending daily balance, or account balance as the amount
+- In mobile banking apps (Wells Fargo, Chase, etc.): the transaction amount appears right-aligned next to the transaction name/description. The balance (a larger number like $834.81) appears BELOW labeled "Ending Daily Balance" or "Balance" — DO NOT USE THIS
+- In PDF statements: the amount is in the "Amount" column, NOT the "Balance" or "Running Balance" column
+- Example: if you see "+$76.00" next to a transaction and "$834.81 Ending Daily Balance" below it — the amount is 76.00, NOT 834.81
+- If an amount shows a minus sign or is in red/parentheses, it is an expense — use the absolute value
 
 EXPENSES (type: "expense") — money going OUT:
 - All purchases, payments to merchants, subscriptions
@@ -68,7 +76,7 @@ EXCLUDE entirely (do not create entries for):
 - Wells Fargo Rewards credit points
 - Running balance amounts shown after each transaction
 
-Return [] if no transactions found in this segment.`;
+Return [] if no transactions found.`;
 
 interface RawTx {
   date: string;

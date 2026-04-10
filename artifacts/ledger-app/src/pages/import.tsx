@@ -522,69 +522,51 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
           </div>
 
           <Card className="border-border">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="text-[10px] text-muted-foreground uppercase bg-card border-b border-border font-mono tracking-wider">
-                  <tr>
-                    <th className="px-4 py-3">Date / Name</th>
-                    <th className="px-4 py-3 text-right">Amount</th>
-                    <th className="px-4 py-3">Category</th>
-                    <th className="px-4 py-3">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleItems.map((item) => {
-                    const isIncome = item.txType === "income";
-                    return (
-                      <tr
-                        key={item.id}
-                        className={`border-b border-border/50 ${
-                          item.isDuplicate
-                            ? "bg-yellow-500/5"
-                            : isIncome
-                            ? "bg-emerald-500/5"
-                            : item.status === "review"
-                            ? "bg-orange-500/5"
-                            : ""
-                        }`}
-                      >
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-mono text-xs text-muted-foreground">{item.date}</span>
-                            {isIncome ? (
-                              <span className="text-[9px] font-mono uppercase tracking-wider bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                                <TrendingUp className="w-2.5 h-2.5" /> Income
-                              </span>
-                            ) : (
-                              <span className="text-[9px] font-mono uppercase tracking-wider bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                                <TrendingDown className="w-2.5 h-2.5" /> Expense
-                              </span>
-                            )}
-                          </div>
-                          <div className="font-medium max-w-[200px] truncate" title={item.name}>
-                            {item.name}
-                          </div>
-                          {item.ruleApplied && (
-                            <div className="text-[10px] text-primary/70 font-mono mt-1 flex items-center gap-1">
-                              <Check className="w-3 h-3" /> {item.ruleApplied}
-                            </div>
+            <div className="divide-y divide-border/50">
+              {visibleItems.map((item) => {
+                const isIncome = item.txType === "income";
+                return (
+                  <div
+                    key={item.id}
+                    className={`px-4 py-3 ${
+                      item.isDuplicate
+                        ? "bg-yellow-500/5"
+                        : isIncome
+                        ? "bg-emerald-500/5"
+                        : item.status === "review"
+                        ? "bg-orange-500/5"
+                        : ""
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          <span className="font-mono text-xs text-muted-foreground">{item.date}</span>
+                          {isIncome ? (
+                            <span className="text-[9px] font-mono uppercase tracking-wider bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                              <TrendingUp className="w-2.5 h-2.5" /> Income
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-mono uppercase tracking-wider bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                              <TrendingDown className="w-2.5 h-2.5" /> Expense
+                            </span>
                           )}
                           {item.isDuplicate && (
-                            <div className="text-[10px] text-yellow-500 font-mono mt-1 flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3" /> Potential Duplicate
-                            </div>
+                            <span className="text-[9px] font-mono uppercase tracking-wider bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                              <AlertTriangle className="w-2.5 h-2.5" /> Duplicate
+                            </span>
                           )}
-                        </td>
-                        <td className={`px-4 py-3 font-mono font-bold text-right ${isIncome ? "text-emerald-400" : ""}`}>
-                          {isIncome ? "+" : ""}${item.amount.toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3">
+                        </div>
+                        <div className="font-medium truncate" title={item.name}>{item.name}</div>
+                        {item.ruleApplied && (
+                          <div className="text-[10px] text-primary/70 font-mono mt-0.5 flex items-center gap-1">
+                            <Check className="w-3 h-3" /> {item.ruleApplied}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
                           {isIncome ? (
-                            <Select
-                              value={item.incomeCategory ?? "Other Income"}
-                              onValueChange={(v) => updateItemIncomeCategory(item.id, v)}
-                            >
-                              <SelectTrigger className="h-8 font-mono text-[10px] uppercase w-[130px] bg-emerald-500/10 border-emerald-500/30 text-emerald-400">
+                            <Select value={item.incomeCategory ?? "Other Income"} onValueChange={(v) => updateItemIncomeCategory(item.id, v)}>
+                              <SelectTrigger className="h-7 font-mono text-[10px] uppercase w-[130px] bg-emerald-500/10 border-emerald-500/30 text-emerald-400">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -594,12 +576,9 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                               </SelectContent>
                             </Select>
                           ) : (
-                            <div className="space-y-1.5">
-                              <Select
-                                value={item.resolvedCategory}
-                                onValueChange={(v) => updateItemCategory(item.id, v)}
-                              >
-                                <SelectTrigger className="h-8 font-mono text-[10px] uppercase w-[120px] bg-transparent border-border">
+                            <>
+                              <Select value={item.resolvedCategory} onValueChange={(v) => updateItemCategory(item.id, v)}>
+                                <SelectTrigger className="h-7 font-mono text-[10px] uppercase w-[120px] bg-transparent border-border">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -614,23 +593,18 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                                   className={`flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded transition-colors ${
                                     item.recurringBill
                                       ? "bg-primary/20 text-primary border border-primary/40"
-                                      : "bg-transparent text-muted-foreground border border-border/50 hover:border-primary/30 hover:text-primary/70"
+                                      : "bg-transparent text-muted-foreground border border-border/50 hover:border-primary/30"
                                   }`}
                                 >
                                   <RefreshCw className="w-2.5 h-2.5" />
                                   {item.recurringBill ? "Recurring" : "Add Recurring"}
                                 </button>
                               )}
-                            </div>
+                            </>
                           )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Select
-                            value={item.action}
-                            onValueChange={(v: "save" | "skip" | "review") => updateItemAction(item.id, v)}
-                          >
+                          <Select value={item.action} onValueChange={(v: "save" | "skip" | "review") => updateItemAction(item.id, v)}>
                             <SelectTrigger
-                              className={`h-8 font-mono text-[10px] uppercase w-[100px] ${
+                              className={`h-7 font-mono text-[10px] uppercase w-[90px] ${
                                 item.action === "save"
                                   ? isIncome
                                     ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
@@ -648,12 +622,15 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                               <SelectItem value="review">Review</SelectItem>
                             </SelectContent>
                           </Select>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        </div>
+                      </div>
+                      <div className={`font-mono font-bold text-right shrink-0 pt-1 ${isIncome ? "text-emerald-400" : ""}`}>
+                        {isIncome ? "+" : ""}${item.amount.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </Card>
 

@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
-import { useBills, useAddBill, useUpdateBill, useDeleteBill, useTransactions, useCustomCategories, useSaveCustomCategories } from "@/hooks/use-finance";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useBills, useAddBill, useUpdateBill, useDeleteBill, useTransactions, useAddTransaction, useCustomCategories, useSaveCustomCategories } from "@/hooks/use-finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Loader2, Plus, Edit2, Trash2, CheckCircle2, Circle, ScanSearch,
   Settings2, Wrench, Trash, RefreshCw, ChevronDown, ChevronUp, ClipboardList,
-  PlusCircle, X,
+  PlusCircle, X, Link2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -42,6 +42,20 @@ function normalizeName(name: string): string {
 function isPaidInMonth(bill: Bill, month: string): boolean {
   if (bill.paidMonths) return bill.paidMonths.includes(month);
   return bill.isPaid;
+}
+
+function findLinkedTransaction(bill: Bill, transactions: Transaction[]): Transaction | undefined {
+  const billWords = bill.name
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(" ")
+    .filter((w) => w.length >= 4);
+  if (billWords.length === 0) return undefined;
+  return transactions.find((tx) => {
+    if (tx.type === "income") return false;
+    const txName = tx.name.toLowerCase();
+    return billWords.some((word) => txName.includes(word));
+  });
 }
 
 // Dates are stored as YYYY-MM-DD — extract the day portion (index 2 after splitting on "-")
@@ -275,13 +289,15 @@ interface BillRowProps {
   compact?: boolean;
   selectedMonth: string;
   todayDay: number;
+  ledgerLinked?: Transaction;
   onTogglePaid: (bill: Bill) => void;
   onEdit: (bill: Bill) => void;
   onDelete: (id: string) => void;
 }
 
-function BillRow({ bill, compact = false, selectedMonth, todayDay, onTogglePaid, onEdit, onDelete }: BillRowProps) {
-  const paid = isPaidInMonth(bill, selectedMonth);
+function BillRow({ bill, compact = false, selectedMonth, todayDay, ledgerLinked, onTogglePaid, onEdit, onDelete }: BillRowProps) {
+  const manuallyPaid = isPaidInMonth(bill, selectedMonth);
+  const paid = manuallyPaid || !!ledgerLinked;
   const isOverdue = !paid && bill.dueDay < todayDay;
   const isDueToday = !paid && bill.dueDay === todayDay;
   const isDueSoon = !paid && bill.dueDay > todayDay && bill.dueDay - todayDay <= 3;
@@ -289,7 +305,7 @@ function BillRow({ bill, compact = false, selectedMonth, todayDay, onTogglePaid,
   const dueDateObj = new Date(selYear, selMonth - 1, bill.dueDay);
   const formattedDate = dueDateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   return (
-    <div className={`flex items-center gap-2 px-4 py-3 transition-colors hover:bg-muted/20 ${paid ? "opacity-50" : isOverdue ? "bg-red-500/5" : isDueToday ? "bg-yellow-500/5" : ""}`}>
+    <div className={`flex items-center gap-2 px-4 py-3 transition-colors hover:bg-muted/20 ${paid ? "opacity-60" : isOverdue ? "bg-red-500/5" : isDueToday ? "bg-yellow-500/5" : ""}`}>
       <div className="flex-shrink-0 text-center min-w-[44px]">
         <span className={`font-mono text-xs font-bold block ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-primary"}`}>{formattedDate}</span>
       </div>
@@ -298,6 +314,11 @@ function BillRow({ bill, compact = false, selectedMonth, todayDay, onTogglePaid,
         {!compact && (
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className="text-[10px] text-muted-foreground font-mono uppercase">{bill.category}</span>
+            {ledgerLinked && (
+              <span className="text-[10px] font-mono text-blue-400 bg-blue-500/10 px-1.5 rounded flex items-center gap-0.5">
+                <Link2 className="w-2.5 h-2.5" /> Ledger
+              </span>
+            )}
             {isOverdue && <span className="text-[10px] font-mono text-red-400 bg-red-500/10 px-1 rounded">OVERDUE</span>}
             {isDueToday && <span className="text-[10px] font-mono text-yellow-400 bg-yellow-500/10 px-1 rounded">TODAY</span>}
             {isDueSoon && <span className="text-[10px] font-mono text-orange-400 bg-orange-500/10 px-1 rounded">SOON</span>}
@@ -305,8 +326,12 @@ function BillRow({ bill, compact = false, selectedMonth, todayDay, onTogglePaid,
         )}
       </div>
       <span className={`font-mono font-bold text-sm flex-shrink-0 ${paid ? "text-muted-foreground" : ""}`}>${bill.amount.toFixed(2)}</span>
-      <button onClick={() => onTogglePaid(bill)} className="text-muted-foreground hover:text-primary transition-colors flex-shrink-0" title={paid ? "Mark unpaid" : "Mark paid"}>
-        {paid ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Circle className="w-5 h-5" />}
+      <button
+        onClick={() => !ledgerLinked && onTogglePaid(bill)}
+        className={`transition-colors flex-shrink-0 ${ledgerLinked ? "cursor-default text-blue-400" : "text-muted-foreground hover:text-primary"}`}
+        title={ledgerLinked ? `Paid via Ledger: ${ledgerLinked.name}` : paid ? "Mark unpaid" : "Mark paid"}
+      >
+        {paid ? <CheckCircle2 className={`w-5 h-5 ${ledgerLinked ? "text-blue-400" : "text-green-500"}`} /> : <Circle className="w-5 h-5" />}
       </button>
       {!compact && (
         <>
@@ -343,11 +368,14 @@ function SectionHeader({
 
 export default function BillsPage({ selectedMonth }: { selectedMonth: string }) {
   const { data: bills, isLoading: billsLoading } = useBills();
-  // Load all transactions in the background for Detect — do NOT block the page on this
+  // All transactions (background) used for Detect feature
   const { data: allTxs } = useTransactions();
+  // Selected month transactions used for Ledger ↔ Bill Manager link detection
+  const { data: monthTxs } = useTransactions(selectedMonth);
   const addBill = useAddBill();
   const updateBill = useUpdateBill();
   const deleteBill = useDeleteBill();
+  const addTx = useAddTransaction();
   const { toast } = useToast();
   const { data: customCats = [] } = useCustomCategories();
   const saveCustomCats = useSaveCustomCategories();
@@ -414,8 +442,25 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     [recurringBills, monthSpecificBills]
   );
 
+  // Map from bill.id → matching ledger transaction for the selected month
+  const ledgerLinkedMap = useMemo(() => {
+    const map = new Map<string, Transaction>();
+    if (!monthTxs || !bills) return map;
+    for (const bill of bills) {
+      const linked = findLinkedTransaction(bill, monthTxs);
+      if (linked) map.set(bill.id, linked);
+    }
+    return map;
+  }, [bills, monthTxs]);
+
+  // True if a bill is paid either manually or via a matching ledger transaction
+  const isEffectivelyPaid = useCallback(
+    (b: Bill) => isPaidInMonth(b, selectedMonth) || ledgerLinkedMap.has(b.id),
+    [selectedMonth, ledgerLinkedMap]
+  );
+
   const totalAmount = allMonthBills.reduce((s, b) => s + b.amount, 0);
-  const paidAmount = allMonthBills.filter((b) => isPaidInMonth(b, selectedMonth)).reduce((s, b) => s + b.amount, 0);
+  const paidAmount = allMonthBills.filter(isEffectivelyPaid).reduce((s, b) => s + b.amount, 0);
   const remaining = totalAmount - paidAmount;
 
   const [pc1, pc2] = paycheckDays;
@@ -428,28 +473,51 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     ? allMonthBills.filter((b) => pc1 < pc2 ? (b.dueDay >= pc2 || b.dueDay < pc1) : (b.dueDay >= pc2 && b.dueDay < pc1))
     : [];
 
+  const addBillToLedger = (bill: Bill) => {
+    const day = String(bill.dueDay).padStart(2, "0");
+    const date = `${selectedMonth}-${day}`;
+    addTx.mutate({
+      date,
+      name: bill.name,
+      amount: bill.amount,
+      category: bill.category as any,
+      status: "cleared",
+      type: "expense",
+      month: selectedMonth,
+      note: "Added from Bill Manager",
+    } as any);
+  };
+
   const togglePaid = (bill: Bill) => {
+    const currentlyManuallyPaid = isPaidInMonth(bill, selectedMonth);
+    const currentlyLinked = ledgerLinkedMap.has(bill.id);
+    if (currentlyLinked) return; // Auto-paid via ledger — cannot toggle manually
     if (bill.isRecurring) {
       const existingPaid = bill.paidMonths ?? (bill.isPaid ? [] : []);
-      const currently = isPaidInMonth(bill, selectedMonth);
-      const newPaidMonths = currently
+      const newPaidMonths = currentlyManuallyPaid
         ? existingPaid.filter((m) => m !== selectedMonth)
         : [...existingPaid, selectedMonth];
       updateBill.mutate({ id: bill.id, data: { paidMonths: newPaidMonths } });
+      if (!currentlyManuallyPaid) addBillToLedger(bill);
     } else {
       updateBill.mutate({ id: bill.id, data: { isPaid: !bill.isPaid } });
+      if (!bill.isPaid) addBillToLedger(bill);
+    }
+    if (!currentlyManuallyPaid) {
+      toast({ description: `${bill.name} marked paid and added to Ledger.` });
     }
   };
 
   const markAllPaid = () => {
     for (const bill of allMonthBills) {
-      if (isPaidInMonth(bill, selectedMonth)) continue;
+      if (isEffectivelyPaid(bill)) continue;
       if (bill.isRecurring) {
         const existingPaid = bill.paidMonths ?? [];
         updateBill.mutate({ id: bill.id, data: { paidMonths: [...existingPaid, selectedMonth] } });
       } else {
         updateBill.mutate({ id: bill.id, data: { isPaid: true } });
       }
+      addBillToLedger(bill);
     }
   };
 
@@ -651,7 +719,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           </div>
           <div className="flex justify-between items-center">
             <span className="text-xs font-mono text-muted-foreground">
-              {allMonthBills.filter(b => isPaidInMonth(b, selectedMonth)).length} of {allMonthBills.length} paid
+              {allMonthBills.filter(isEffectivelyPaid).length} of {allMonthBills.length} paid
             </span>
             <Button variant="ghost" size="sm" onClick={markAllPaid} className="h-7 font-mono text-xs text-muted-foreground hover:text-green-400">
               <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> Mark All Paid
@@ -703,7 +771,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                 title="Monthly Recurring"
                 count={recurringBills.length}
                 total={recurringBills.reduce((s, b) => s + b.amount, 0)}
-                paidTotal={recurringBills.filter(b => isPaidInMonth(b, selectedMonth)).reduce((s, b) => s + b.amount, 0)}
+                paidTotal={recurringBills.filter(isEffectivelyPaid).reduce((s, b) => s + b.amount, 0)}
                 collapsed={recurringCollapsed}
                 onToggle={() => setRecurringCollapsed(!recurringCollapsed)}
               />
@@ -715,7 +783,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                 </div>
               ) : (
                 <div className="divide-y divide-border">
-                  {recurringBills.map((b) => <BillRow key={b.id} bill={b} {...billRowProps} />)}
+                  {recurringBills.map((b) => <BillRow key={b.id} bill={b} ledgerLinked={ledgerLinkedMap.get(b.id)} {...billRowProps} />)}
                 </div>
               )
             )}
@@ -728,7 +796,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                 title={`This Month Only — ${selectedMonth}`}
                 count={monthSpecificBills.length}
                 total={monthSpecificBills.reduce((s, b) => s + b.amount, 0)}
-                paidTotal={monthSpecificBills.filter(b => isPaidInMonth(b, selectedMonth)).reduce((s, b) => s + b.amount, 0)}
+                paidTotal={monthSpecificBills.filter(isEffectivelyPaid).reduce((s, b) => s + b.amount, 0)}
                 collapsed={monthSpecificCollapsed}
                 onToggle={() => setMonthSpecificCollapsed(!monthSpecificCollapsed)}
               />
@@ -740,7 +808,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                 </div>
               ) : (
                 <div className="divide-y divide-border">
-                  {monthSpecificBills.map((b) => <BillRow key={b.id} bill={b} {...billRowProps} />)}
+                  {monthSpecificBills.map((b) => <BillRow key={b.id} bill={b} ledgerLinked={ledgerLinkedMap.get(b.id)} {...billRowProps} />)}
                 </div>
               )
             )}
@@ -756,7 +824,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             { label: `Paycheck 2 — Day ${pc2}`, wBills: window2Bills, color: "border-blue-500/30" },
           ].map(({ label, wBills, color }) => {
             const wTotal = wBills.reduce((s, b) => s + b.amount, 0);
-            const wPaid = wBills.filter((b) => isPaidInMonth(b, selectedMonth)).reduce((s, b) => s + b.amount, 0);
+            const wPaid = wBills.filter(isEffectivelyPaid).reduce((s, b) => s + b.amount, 0);
             return (
               <Card key={label} className={`border-2 ${color}`}>
                 <CardHeader className="pb-2">
@@ -773,7 +841,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                     <p className="text-xs font-mono text-muted-foreground px-4 pb-4">No bills in this window.</p>
                   ) : (
                     <div className="divide-y divide-border">
-                      {wBills.map((b) => <BillRow key={b.id} bill={b} compact {...billRowProps} />)}
+                      {wBills.map((b) => <BillRow key={b.id} bill={b} compact ledgerLinked={ledgerLinkedMap.get(b.id)} {...billRowProps} />)}
                     </div>
                   )}
                 </CardContent>
