@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useTransactions, useRules, useBulkAddTransactions, useAddBill, useCustomCategories } from "@/hooks/use-finance";
+import { useTransactions, useRules, useBulkAddTransactions, useAddBill, useCustomCategories, useSaveCustomCategories } from "@/hooks/use-finance";
+import { CategorySelect } from "@/components/ui/CategorySelect";
 import { parseCSV } from "@/lib/csvParser";
 import { runRulesEngine } from "@/lib/rulesEngine";
 import { ImportPreviewItem, INCOME_CATEGORIES } from "@/lib/types";
@@ -79,6 +80,7 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
   const { data: existingTxs } = useTransactions();
   const { data: userRules } = useRules();
   const { data: customCats = [] } = useCustomCategories();
+  const saveCustomCats = useSaveCustomCategories();
   const bulkAdd = useBulkAddTransactions();
   const addBill = useAddBill();
   const { toast } = useToast();
@@ -99,6 +101,12 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
     ...EXPENSE_CATEGORIES,
     ...(customCats || []).filter((c) => !EXPENSE_CATEGORIES.includes(c)),
   ];
+
+  const handleAddCategory = (cat: string) => {
+    if (allExpenseCategories.includes(cat)) return;
+    const next = [...(customCats || []), cat];
+    saveCustomCats.mutate(next);
+  };
 
   const PAGE_SIZE = 50;
   // Reset to page 0 whenever the preview item list changes (new file uploaded)
@@ -623,16 +631,13 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                             </Select>
                           ) : (
                             <>
-                              <Select value={item.resolvedCategory} onValueChange={(v) => updateItemCategory(item.id, v)}>
-                                <SelectTrigger className="h-7 font-mono text-[10px] uppercase w-[120px] bg-transparent border-border">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {allExpenseCategories.map((cat) => (
-                                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <CategorySelect
+                                value={item.resolvedCategory}
+                                onChange={(v) => updateItemCategory(item.id, v)}
+                                allCategories={allExpenseCategories}
+                                onAdd={handleAddCategory}
+                                triggerClassName="h-7 text-[10px] uppercase w-[120px] bg-transparent border-border"
+                              />
                               {item.action === "save" && (
                                 <button
                                   onClick={() => updateItemRecurring(item.id, !item.recurringBill)}
