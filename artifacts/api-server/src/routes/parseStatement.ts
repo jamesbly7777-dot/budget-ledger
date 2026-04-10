@@ -83,16 +83,37 @@ RULE 2 — AMOUNTS (critical, do not confuse)
 There are two statement layouts. Detect which one you are looking at:
 
 -- LAYOUT A: Online Account Summary (one amount column) --
-  This is the Wells Fargo website "Account Detail" view. Each row shows:
-    Date  |  Description  |  Amount
+  This is the Wells Fargo website "Account Detail" or "Account Summary" view.
+  The structure is: Date column on the LEFT | Description in the MIDDLE | Dollar amount on the RIGHT.
   The ONLY dollar figure on each row is the transaction amount. Use it directly.
   There is NO running balance column in this layout.
-  Example:
-    04/08/26  Dave DavesCafe FEE 260408...  $1.00
-    → amount = 1.00
 
-  CRITICAL: Each row's amount belongs ONLY to that row's description.
-  Never borrow an amount from an adjacent row. Each row is completely independent.
+  ⚠ CRITICAL — MULTI-LINE DESCRIPTIONS:
+  Long descriptions often WRAP onto a second (or third) visual line directly below the first.
+  The dollar amount displayed at the far right is ALWAYS anchored to the FIRST line of that entry
+  (the line that starts with the date like "04/08/26").
+  The wrapped continuation lines that follow do NOT have their own dollar amount.
+
+  HOW TO MATCH AMOUNT TO TRANSACTION:
+    Step 1: Find each row that begins with a date (MM/DD/YY) in the leftmost column.
+    Step 2: The dollar amount on that same date-row is this transaction's amount.
+    Step 3: Any lines below that date-row WITHOUT a new date are continuation of the same description — ignore their position when counting amounts.
+    Step 4: The NEXT date-row is a completely separate transaction with its own separate amount.
+
+  Example (descriptions wrapped across two visual lines):
+    04/08/26  PURCHASE AUTHORIZED ON 04/08 WALGREENS STORE 2835 SW    $14.03
+              2 OKLAHOMA CITY OK P586098796061092 CARD 0590
+    04/08/26  PURCHASE AUTHORIZED ON 04/08 WALGREENS STORE 2835 SW    $11.64
+              2 OKLAHOMA CITY OK P466098793692656 CARD 0590
+    04/08/26  PURCHASE AUTHORIZED ON 04/07 SQ *FRESH CLIPS OKC OK     $38.00
+              5336097805846263 CARD 0590
+
+  In this example there are THREE separate transactions:
+    → Walgreens at $14.03
+    → Walgreens at $11.64  (NOT Fresh Clips — a new date line = new transaction)
+    → SQ *FRESH CLIPS at $38.00  (NOT $11.64 — never borrow an amount from a prior row)
+
+  NEVER shift amounts down: the amount on line N belongs to the transaction on line N, not line N+1.
 
 -- LAYOUT B: PDF Monthly Statement (two amount columns) --
   Columns: Date | Description | Withdrawals | Deposits | Daily Balance
@@ -344,15 +365,15 @@ router.post("/parse-statement", upload.single("file"), async (req, res) => {
               {
                 role: "user",
                 content: [
-                  { type: "image_url", image_url: { url: dataUrl, detail: "auto" } },
+                  { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
                   {
                     type: "text",
-                    text: "Extract every transaction from this bank statement image. First identify the layout: (A) Online Account Summary — one amount per row, use it directly; or (B) PDF Monthly Statement — two numbers per row, use the LEFT one (right is Daily Balance). Clean each name per Rule 1: strip 'PURCHASE AUTHORIZED ON MM/DD', strip 'CARD XXXX', strip long reference codes (6+ digits), keep the merchant name and city/state. Return only the JSON array.",
+                    text: "Extract every transaction from this bank statement image. Identify the layout: (A) Online Account Summary or (B) PDF Monthly Statement. For Layout A: each new transaction starts with a date in the left column — that date-row's dollar amount (far right) is THIS transaction's amount. Long descriptions wrap to a 2nd line with no date and no separate amount — the amount is on the 1st (dated) line only. NEVER slide an amount from row N to row N+1. For Layout B: two numbers per row — use the LEFT (transaction), ignore RIGHT (Daily Balance). Clean names per Rule 1. Return only the JSON array.",
                   },
                 ],
               },
             ],
-            max_completion_tokens: 2048,
+            max_completion_tokens: 4096,
             temperature: 0,
             seed: 42,
           },
