@@ -113,7 +113,7 @@ export async function addBill(userId: string, bill: Omit<Bill, "id" | "createdAt
 
 export async function updateBill(userId: string, billId: string, data: Partial<Bill>): Promise<void> {
   const ref = doc(db, "users", userId, "bills", billId);
-  // Convert undefined values to deleteField() — Firestore throws on raw undefined
+  // Convert undefined values to deleteField() so Firestore does not reject raw undefined.
   const clean: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
     clean[k] = v === undefined ? deleteField() : v;
@@ -202,15 +202,29 @@ export async function reapplyRulesToTransactions(
   return updated;
 }
 
-// ─── Bill Manager ledger log ────────────────────────────────────────────────
+// Bill Manager ledger log
 // Stored as users/{uid}/settings/billManagerLog: { [month]: { [billId]: txId } }
 // Allows exact undo of ledger entries created by Mark All Paid / individual toggles.
 
 export async function getBillManagerLog(userId: string, month: string): Promise<Record<string, string>> {
   const ref = doc(db, "users", userId, "settings", "billManagerLog");
   const snap = await getDoc(ref);
-  if (!snap.exists()) return {};
-  return (snap.data()?.[month] as Record<string, string>) ?? {};
+  const savedLog = snap.exists() ? ((snap.data()?.[month] as Record<string, string>) ?? {}) : {};
+
+  const txSnap = await getDocsFromServer(
+    query(
+      userTransactionsCol(userId),
+      where("month", "==", month),
+      where("note", "==", "Added from Bill Manager"),
+    ),
+  );
+  const liveLog: Record<string, string> = {};
+  txSnap.docs.forEach((txDoc) => {
+    const tx = txDoc.data() as Transaction;
+    if (tx.billId) liveLog[tx.billId] = txDoc.id;
+  });
+
+  return { ...savedLog, ...liveLog };
 }
 
 export async function saveBillManagerEntry(userId: string, month: string, billId: string, txId: string): Promise<void> {
@@ -253,7 +267,7 @@ export function computeCategoryTotals(transactions: Transaction[]): Record<strin
 }
 
 // Real-time listener: fires whenever bills change in Firestore.
-// Returns an unsubscribe function — call it on component unmount.
+// Returns an unsubscribe function; call it on component unmount.
 export function subscribeBills(userId: string, callback: (bills: Bill[]) => void): () => void {
   const col = userBillsCol(userId);
   return onSnapshot(col, (snap) => {
