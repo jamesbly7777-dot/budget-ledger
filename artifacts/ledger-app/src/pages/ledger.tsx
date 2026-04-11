@@ -215,12 +215,18 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
     const all = allTransactions || [];
     const groups: Record<string, Transaction[]> = {};
     for (const tx of all) {
-      const key = `${tx.date}|${tx.name.toLowerCase().trim()}|${Math.abs(tx.amount).toFixed(2)}`;
+      const key = `${tx.date}|${tx.name.toLowerCase().trim()}|${Math.abs(tx.amount ?? 0).toFixed(2)}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(tx);
     }
     return Object.values(groups).filter((g) => g.length > 1);
   }, [allTransactions]);
+
+  // Must be before any early return — hooks cannot be called conditionally
+  const txCategories = useMemo(() => {
+    const cats = new Set<string>((transactions || []).map((t) => t.category));
+    return [...allCategories.filter((c) => cats.has(c)), ...Array.from(cats).filter((c) => !allCategories.includes(c))];
+  }, [transactions, allCategories]);
 
   if (isLoading) {
     return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
@@ -309,12 +315,6 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
     await deleteTx.mutateAsync({ id: splitTx.id, month: splitTx.month });
     setSplitTx(null);
   };
-
-  // Filter categories available in the filter dropdown (includes custom ones found in transactions)
-  const txCategories = useMemo(() => {
-    const cats = new Set<string>(txs.map((t) => t.category));
-    return [...allCategories.filter((c) => cats.has(c)), ...Array.from(cats).filter((c) => !allCategories.includes(c))];
-  }, [txs, allCategories]);
 
   return (
     <div className="space-y-4">
