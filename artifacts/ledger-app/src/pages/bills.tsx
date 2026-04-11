@@ -477,7 +477,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const addBillToLedger = (bill: Bill) => {
     const day = String(bill.dueDay).padStart(2, "0");
     const date = `${selectedMonth}-${day}`;
-    addTx.mutate({
+    return addTx.mutateAsync({
       date,
       name: bill.name,
       amount: bill.amount,
@@ -509,19 +509,31 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     }
   };
 
-  const markAllPaid = () => {
-    for (const bill of allMonthBills) {
-      if (isEffectivelyPaid(bill)) continue;
-      if (bill.isRecurring) {
-        const existingPaid = bill.paidMonths ?? [];
-        updateBill.mutate({ id: bill.id, data: { paidMonths: [...existingPaid, selectedMonth] } });
-      } else {
-        updateBill.mutate({ id: bill.id, data: { isPaid: true } });
-      }
-      addBillToLedger(bill);
-    }
+  const [isMarkingAllPaid, setIsMarkingAllPaid] = useState(false);
+
+  const markAllPaid = async () => {
+    setIsMarkingAllPaid(true);
     setConfirmAction(null);
-    toast({ description: "All bills marked paid and added to Ledger." });
+    try {
+      const unpaidBills = allMonthBills.filter((b) => !isEffectivelyPaid(b));
+      // Await all bill status updates AND ledger entries — nothing is fire-and-forget
+      await Promise.all(
+        unpaidBills.map(async (bill) => {
+          if (bill.isRecurring) {
+            const existingPaid = bill.paidMonths ?? [];
+            await updateBill.mutateAsync({ id: bill.id, data: { paidMonths: [...existingPaid, selectedMonth] } });
+          } else {
+            await updateBill.mutateAsync({ id: bill.id, data: { isPaid: true } });
+          }
+          await addBillToLedger(bill);
+        })
+      );
+      toast({ description: `${unpaidBills.length} bill${unpaidBills.length !== 1 ? "s" : ""} marked paid and added to Ledger.` });
+    } catch {
+      toast({ description: "Something went wrong marking bills paid. Please try again." });
+    } finally {
+      setIsMarkingAllPaid(false);
+    }
   };
 
   const [isUndoingAll, setIsUndoingAll] = useState(false);
@@ -908,8 +920,9 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           </p>
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="outline" onClick={() => setConfirmAction(null)} className="font-mono text-xs uppercase">Cancel</Button>
-            <Button onClick={markAllPaid} className="font-mono text-xs uppercase bg-green-500/20 text-green-400 border border-green-500/40 hover:bg-green-500/30">
-              <CheckCircle2 className="w-4 h-4 mr-2" /> Confirm
+            <Button onClick={markAllPaid} disabled={isMarkingAllPaid} className="font-mono text-xs uppercase bg-green-500/20 text-green-400 border border-green-500/40 hover:bg-green-500/30">
+              {isMarkingAllPaid ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+              {isMarkingAllPaid ? "Saving..." : "Confirm"}
             </Button>
           </div>
         </DialogContent>
