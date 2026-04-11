@@ -1,0 +1,32 @@
+kind = "web"
+  previewPath = "/"
+  title = "Budget Ledger"
+  version = "1.0.0"
+  id = "artifacts/ledger-app"
+  router = "path"
+
+  [[integratedSkills]]
+  name = "react-vite"
+  version = "1.0.0"
+
+  [[services]]
+  name = "web"
+  paths = [ "/" ]
+  localPort = 25002
+
+  [services.development]
+  run = "pnpm --filter @workspace/ledger-app run dev"
+
+  [services.production]
+  build = [ "pnpm", "--filter", "@workspace/ledger-app", "run", "build" ]
+  publicDir = "artifacts/ledger-app/dist/public"
+  serve = "static"
+
+  [[services.production.rewrites]]
+  from = "/*"
+  to = "/index.html"
+
+  [services.env]
+  PORT = "25002"
+  BASE_PATH = "/"
+  
