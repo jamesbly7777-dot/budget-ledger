@@ -500,17 +500,20 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       // Marking unpaid: reset bill status AND delete the matching auto-added ledger entry
       if (bill.isRecurring) {
         const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
-        updateBill.mutate({ id: bill.id, data: { paidMonths: newPaidMonths } });
+        await updateBill.mutateAsync({ id: bill.id, data: { paidMonths: newPaidMonths } });
       } else {
-        updateBill.mutate({ id: bill.id, data: { isPaid: false } });
+        await updateBill.mutateAsync({ id: bill.id, data: { isPaid: false } });
       }
-      // Find and delete the matching ledger entry (fresh fetch to avoid stale cache)
+      // Fresh fetch — find and delete the matching auto-added ledger entry
       const freshResult = await refetchMonthTxs();
+      const normalizedBillName = bill.name.trim().toLowerCase();
       const match = (freshResult.data ?? []).find(
-        (tx) => tx.note === "Added from Bill Manager" && tx.name === bill.name
+        (tx) =>
+          tx.note === "Added from Bill Manager" &&
+          tx.name.trim().toLowerCase() === normalizedBillName
       );
       if (match) {
-        deleteTx.mutate({ id: match.id, month: selectedMonth });
+        await deleteTx.mutateAsync({ id: match.id, month: selectedMonth });
         toast({ description: `${bill.name} marked unpaid and ledger entry removed.` });
       } else {
         toast({ description: `${bill.name} marked unpaid.` });
@@ -560,24 +563,23 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const markAllUnpaid = async () => {
     setIsUndoingAll(true);
     try {
-      // 1. Reset paid status on ALL bills for this month unconditionally
-      //    (don't rely on cached isPaidInMonth — it may be stale right after markAllPaid)
-      for (const bill of allMonthBills) {
-        if (bill.isRecurring) {
-          const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
-          updateBill.mutate({ id: bill.id, data: { paidMonths: newPaidMonths } });
-        } else {
-          updateBill.mutate({ id: bill.id, data: { isPaid: false } });
-        }
-      }
+      // 1. Await all bill status resets before proceeding
+      await Promise.all(
+        allMonthBills.map((bill) => {
+          if (bill.isRecurring) {
+            const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
+            return updateBill.mutateAsync({ id: bill.id, data: { paidMonths: newPaidMonths } });
+          } else {
+            return updateBill.mutateAsync({ id: bill.id, data: { isPaid: false } });
+          }
+        })
+      );
 
-      // 2. Force-fetch fresh transactions (cached monthTxs is stale after markAllPaid)
+      // 2. Fresh fetch then delete all auto-added entries for this month
       const freshResult = await refetchMonthTxs();
       const freshTxs = freshResult.data ?? [];
       const autoAdded = freshTxs.filter((tx) => tx.note === "Added from Bill Manager");
-      for (const tx of autoAdded) {
-        deleteTx.mutate({ id: tx.id, month: selectedMonth });
-      }
+      await Promise.all(autoAdded.map((tx) => deleteTx.mutateAsync({ id: tx.id, month: selectedMonth })));
 
       toast({
         description: autoAdded.length > 0
