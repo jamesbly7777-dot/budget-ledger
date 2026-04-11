@@ -563,16 +563,18 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     setIsMarkingAllPaid(true);
     setConfirmAction(null);
     try {
-      const unpaidBills = allMonthBills.filter((b) => !isEffectivelyPaid(b));
-      // Call Firestore directly in parallel — bypasses the single shared mutation instance
+      // Only skip bills already in paidMonths — do NOT skip ledger-linked bills.
+      // Ledger-linked bills still need to be added to paidMonths so Undo All can clear them.
+      const billsToMark = allMonthBills.filter((b) => !isPaidInMonth(b, selectedMonth));
       const entries = await Promise.all(
-        unpaidBills.map(async (bill) => {
+        billsToMark.map(async (bill) => {
           if (bill.isRecurring) {
-            const newPaidMonths = [...(bill.paidMonths ?? []), selectedMonth];
-            await firestoreService.updateBill(user!.uid, bill.id, { paidMonths: newPaidMonths });
+            await firestoreService.updateBill(user!.uid, bill.id, { paidMonths: [...(bill.paidMonths ?? []), selectedMonth] });
           } else {
             await firestoreService.updateBill(user!.uid, bill.id, { isPaid: true });
           }
+          // Skip creating a ledger entry for bills already covered by an imported transaction
+          if (ledgerLinkedMap.has(bill.id)) return { billId: bill.id, txId: null, bill };
           const txId = await addBillToLedgerDirect(bill);
           return { billId: bill.id, txId, bill };
         })
@@ -580,11 +582,10 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       // Save txId log so undo knows exactly which transactions to delete
       await Promise.all(
         entries.filter((e) => !!e.txId).map((e) =>
-          firestoreService.saveBillManagerEntry(user!.uid, selectedMonth, e.billId, e.txId)
+          firestoreService.saveBillManagerEntry(user!.uid, selectedMonth, e.billId, e.txId!)
         )
       );
-      // onSnapshot listener updates the UI automatically — no manual refresh needed
-      toast({ description: `${unpaidBills.length} bill${unpaidBills.length !== 1 ? "s" : ""} marked paid and added to Ledger.` });
+      toast({ description: `${billsToMark.length} bill${billsToMark.length !== 1 ? "s" : ""} marked paid.` });
     } catch {
       toast({ description: "Something went wrong marking bills paid. Please try again." });
     } finally {
