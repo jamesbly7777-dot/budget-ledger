@@ -523,31 +523,37 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
 
   const togglePaid = async (bill: Bill) => {
     const currentlyManuallyPaid = isPaidInMonth(bill, selectedMonth);
-    const currentlyLinked = ledgerLinkedMap.has(bill.id);
-    if (currentlyLinked) return; // Auto-paid via ledger — cannot toggle manually
+    const linkedTx = ledgerLinkedMap.get(bill.id);
+    const currentlyPaid = currentlyManuallyPaid || !!linkedTx;
 
-    if (currentlyManuallyPaid) {
-      // Marking unpaid — write to Firestore; onSnapshot listener updates the UI automatically
-      if (bill.isRecurring) {
-        const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
-        await firestoreService.updateBill(user!.uid, bill.id, { paidMonths: newPaidMonths });
-      } else {
-        await firestoreService.updateBill(user!.uid, bill.id, { isPaid: false });
+    if (currentlyPaid) {
+      // Marking unpaid — clear paidMonths AND remove any linked ledger entry
+      if (currentlyManuallyPaid) {
+        if (bill.isRecurring) {
+          await firestoreService.updateBill(user!.uid, bill.id, {
+            paidMonths: (bill.paidMonths ?? []).filter((m) => m !== selectedMonth),
+          });
+        } else {
+          await firestoreService.updateBill(user!.uid, bill.id, { isPaid: false });
+        }
+        const log = await firestoreService.getBillManagerLog(user!.uid, selectedMonth);
+        const logTxId = log[bill.id];
+        if (logTxId) {
+          await firestoreService.deleteTransaction(user!.uid, logTxId);
+          await firestoreService.removeBillManagerEntry(user!.uid, selectedMonth, bill.id);
+        }
       }
-      const log = await firestoreService.getBillManagerLog(user!.uid, selectedMonth);
-      const txId = log[bill.id];
-      if (txId) {
-        await firestoreService.deleteTransaction(user!.uid, txId);
-        await firestoreService.removeBillManagerEntry(user!.uid, selectedMonth, bill.id);
-        toast({ description: `${bill.name} marked unpaid and ledger entry removed.` });
-      } else {
-        toast({ description: `${bill.name} marked unpaid.` });
+      // If linked via ledger (imported OR bill manager), remove that transaction too
+      if (linkedTx) {
+        await firestoreService.deleteTransaction(user!.uid, linkedTx.id);
       }
+      toast({ description: `${bill.name} marked unpaid.` });
     } else {
-      // Marking paid — write to Firestore; onSnapshot listener updates the UI automatically
+      // Marking paid
       if (bill.isRecurring) {
-        const newPaidMonths = [...(bill.paidMonths ?? []), selectedMonth];
-        await firestoreService.updateBill(user!.uid, bill.id, { paidMonths: newPaidMonths });
+        await firestoreService.updateBill(user!.uid, bill.id, {
+          paidMonths: [...(bill.paidMonths ?? []), selectedMonth],
+        });
       } else {
         await firestoreService.updateBill(user!.uid, bill.id, { isPaid: true });
       }
@@ -1134,10 +1140,10 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           </div>
           {(() => {
             const liveBill = editingId ? allMonthBills.find((b) => b.id === editingId) : null;
-            const isManuallyPaid = liveBill ? isPaidInMonth(liveBill, selectedMonth) : false;
+            const isCurrentlyPaid = liveBill ? isEffectivelyPaid(liveBill) : false;
             return (
               <div className="flex justify-between gap-2 flex-wrap">
-                {isManuallyPaid && (
+                {isCurrentlyPaid && (
                   <Button
                     variant="outline"
                     disabled={isTogglingUnpaid}
