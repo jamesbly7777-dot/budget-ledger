@@ -500,37 +500,33 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     if (currentlyLinked) return; // Auto-paid via ledger — cannot toggle manually
 
     if (currentlyManuallyPaid) {
-      // Marking unpaid: reset bill status AND delete the matching auto-added ledger entry
+      // Marking unpaid: reset bill status, look up exact txId from log, delete it
       if (bill.isRecurring) {
         const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
         await updateBill.mutateAsync({ id: bill.id, data: { paidMonths: newPaidMonths } });
       } else {
         await updateBill.mutateAsync({ id: bill.id, data: { isPaid: false } });
       }
-      // Direct Firestore query — bypasses React Query cache entirely
-      const allMonthTxsDirect = await firestoreService.getTransactions(user!.uid, selectedMonth);
-      const normalizedBillName = bill.name.trim().toLowerCase();
-      const match = allMonthTxsDirect.find(
-        (tx) =>
-          tx.note === "Added from Bill Manager" &&
-          tx.name.trim().toLowerCase() === normalizedBillName
-      );
-      if (match) {
-        await deleteTx.mutateAsync({ id: match.id, month: selectedMonth });
+      const log = await firestoreService.getBillManagerLog(user!.uid, selectedMonth);
+      const txId = log[bill.id];
+      if (txId) {
+        await deleteTx.mutateAsync({ id: txId, month: selectedMonth });
+        await firestoreService.removeBillManagerEntry(user!.uid, selectedMonth, bill.id);
         toast({ description: `${bill.name} marked unpaid and ledger entry removed.` });
       } else {
         toast({ description: `${bill.name} marked unpaid.` });
       }
-      await refetchMonthTxs();
+      await Promise.all([refetchBills(), refetchMonthTxs()]);
     } else {
-      // Marking paid: update bill status and add ledger entry
+      // Marking paid: update bill status, add ledger entry, save txId to log
       if (bill.isRecurring) {
         const existingPaid = bill.paidMonths ?? [];
         await updateBill.mutateAsync({ id: bill.id, data: { paidMonths: [...existingPaid, selectedMonth] } });
       } else {
         await updateBill.mutateAsync({ id: bill.id, data: { isPaid: true } });
       }
-      await addBillToLedger(bill);
+      const txId = await addBillToLedger(bill);
+      if (txId) await firestoreService.saveBillManagerEntry(user!.uid, selectedMonth, bill.id, txId as string);
       toast({ description: `${bill.name} marked paid and added to Ledger.` });
     }
   };
@@ -542,8 +538,8 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     setConfirmAction(null);
     try {
       const unpaidBills = allMonthBills.filter((b) => !isEffectivelyPaid(b));
-      // Await all bill status updates AND ledger entries — nothing is fire-and-forget
-      await Promise.all(
+      // Await all bill updates + ledger entries, collect txIds for the log
+      const entries = await Promise.all(
         unpaidBills.map(async (bill) => {
           if (bill.isRecurring) {
             const existingPaid = bill.paidMonths ?? [];
@@ -551,8 +547,15 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           } else {
             await updateBill.mutateAsync({ id: bill.id, data: { isPaid: true } });
           }
-          await addBillToLedger(bill);
+          const txId = await addBillToLedger(bill);
+          return { billId: bill.id, txId: txId as string };
         })
+      );
+      // Save txId log so undo knows exactly which transactions to delete
+      await Promise.all(
+        entries.filter((e) => !!e.txId).map((e) =>
+          firestoreService.saveBillManagerEntry(user!.uid, selectedMonth, e.billId, e.txId)
+        )
       );
       toast({ description: `${unpaidBills.length} bill${unpaidBills.length !== 1 ? "s" : ""} marked paid and added to Ledger.` });
     } catch {
@@ -579,16 +582,17 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         })
       );
 
-      // 2. Direct Firestore query — bypasses React Query cache entirely
-      const allMonthTxsDirect = await firestoreService.getTransactions(user!.uid, selectedMonth);
-      const autoAdded = allMonthTxsDirect.filter((tx) => tx.note === "Added from Bill Manager");
-      await Promise.all(autoAdded.map((tx) => deleteTx.mutateAsync({ id: tx.id, month: selectedMonth })));
+      // 2. Look up exact txIds from the log, delete them directly — no guessing
+      const log = await firestoreService.getBillManagerLog(user!.uid, selectedMonth);
+      const txIds = Object.values(log).filter(Boolean);
+      await Promise.all(txIds.map((txId) => deleteTx.mutateAsync({ id: txId, month: selectedMonth })));
+      await firestoreService.clearBillManagerMonth(user!.uid, selectedMonth);
       // Force UI refresh
       await Promise.all([refetchBills(), refetchMonthTxs()]);
 
       toast({
-        description: autoAdded.length > 0
-          ? `Undone. Removed ${autoAdded.length} auto-added ledger entr${autoAdded.length === 1 ? "y" : "ies"}.`
+        description: txIds.length > 0
+          ? `Undone. Removed ${txIds.length} ledger entr${txIds.length === 1 ? "y" : "ies"}.`
           : "Bills marked unpaid.",
       });
     } finally {

@@ -200,6 +200,32 @@ export async function reapplyRulesToTransactions(
   return updated;
 }
 
+// ─── Bill Manager ledger log ────────────────────────────────────────────────
+// Stored as users/{uid}/settings/billManagerLog: { [month]: { [billId]: txId } }
+// Allows exact undo of ledger entries created by Mark All Paid / individual toggles.
+
+export async function getBillManagerLog(userId: string, month: string): Promise<Record<string, string>> {
+  const ref = doc(db, "users", userId, "settings", "billManagerLog");
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return {};
+  return (snap.data()?.[month] as Record<string, string>) ?? {};
+}
+
+export async function saveBillManagerEntry(userId: string, month: string, billId: string, txId: string): Promise<void> {
+  const ref = doc(db, "users", userId, "settings", "billManagerLog");
+  await setDoc(ref, { [month]: { [billId]: txId } }, { merge: true });
+}
+
+export async function clearBillManagerMonth(userId: string, month: string): Promise<void> {
+  const ref = doc(db, "users", userId, "settings", "billManagerLog");
+  await setDoc(ref, { [month]: {} }, { merge: true });
+}
+
+export async function removeBillManagerEntry(userId: string, month: string, billId: string): Promise<void> {
+  const ref = doc(db, "users", userId, "settings", "billManagerLog");
+  await updateDoc(ref, { [`${month}.${billId}`]: deleteField() });
+}
+
 export async function getCustomCategories(userId: string): Promise<string[]> {
   const ref = doc(db, "users", userId, "settings", "categories");
   const snap = await getDoc(ref);
