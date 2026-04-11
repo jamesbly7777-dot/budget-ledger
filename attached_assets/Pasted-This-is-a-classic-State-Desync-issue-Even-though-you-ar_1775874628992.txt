@@ -1,0 +1,84 @@
+This is a classic "State Desync" issue. Even though you are using onSnapshot (which is great), there are two specific reasons why your UI is "sticking" and not reflecting the changes you see in the database.
+Based on the code you provided, here is the fix.
+The Problem
+In your isEffectivelyPaid logic, you are checking two things:
+isPaidInMonth(b, selectedMonth) (The paidMonths array in the bill document).
+ledgerLinkedMap.has(b.id) (Whether the bill is linked to a transaction in the ledger).
+The "Undo" process updates the bills, but if the ledgerLinkedMap doesn't update at the exact same time, the UI will see that the bill is no longer in paidMonths, but it will still see it in the ledgerLinkedMap and keep the checkmark visible.
+Fix 1: Ensure the Map is Reactive
+In src/pages/bills.tsx, look at how you define ledgerLinkedMap. If it is just a regular variable or a useMemo with missing dependencies, it won't clear when you delete the transactions.
+Change your ledgerLinkedMap definition to this:
+(Make sure transactions comes directly from your useTransactions hook).
+code
+TypeScript
+const { data: transactions } = useTransactions(selectedMonth);
+
+const ledgerLinkedMap = useMemo(() => {
+  const map = new Map();
+  if (!transactions) return map;
+  
+  transactions.forEach(tx => {
+    // If the transaction has a metadata field linking it to a bill
+    if (tx.billId) {
+      map.set(tx.billId, tx.id);
+    }
+  });
+  return map;
+}, [transactions]); // IMPORTANT: This must depend on transactions
+Fix 2: The "Undo" Race Condition
+In your markAllUnpaid function, you are performing many async operations. React might try to re-render halfway through. Also, you are clearing the BillManagerLog in Firestore, but if that log is stored in a local state variable in your component, you need to clear that state manually.
+Update your markAllUnpaid function to include a state reset:
+code
+TypeScript
+const markAllUnpaid = async () => {
+  setIsUndoingAll(true);
+  try {
+    // 1. Update all bills
+    await Promise.all(
+      allMonthBills.map((bill) =>
+        bill.isRecurring
+          ? firestoreService.updateBill(user!.uid, bill.id, {
+              paidMonths: (bill.paidMonths ?? []).filter((m) => m !== selectedMonth),
+            })
+          : firestoreService.updateBill(user!.uid, bill.id, { isPaid: false })
+      )
+    );
+
+    // 2. Get and Delete transactions
+    const log = await firestoreService.getBillManagerLog(user!.uid, selectedMonth);
+    const txIds = Object.values(log).filter(Boolean) as string[];
+    
+    if (txIds.length > 0) {
+      await Promise.all(txIds.map((txId) => firestoreService.deleteTransaction(user!.uid, txId)));
+    }
+
+    // 3. Clear the log in Firestore
+    await firestoreService.clearBillManagerMonth(user!.uid, selectedMonth);
+
+    // FIX: If you have a local state for the log, clear it here!
+    // setLocalLog({}); 
+
+    toast({
+      description: "Bills marked unpaid and ledger entries removed.",
+    });
+  } catch (error) {
+    console.error(error);
+    toast({ variant: "destructive", description: "Failed to undo bills." });
+  } finally {
+    setIsUndoingAll(false);
+  }
+};
+Fix 3: The Date Format Mismatch (Check this!)
+This is the #1 reason filters fail in ledger apps.
+Your markAllUnpaid filters out selectedMonth.
+If selectedMonth is "2024-05" (with a zero) but your bill was saved with "2024-5" (no zero), the filter m !== selectedMonth will fail to remove the month, so the bill remains "paid" in the database.
+Verify your month strings:
+Add this temporary log inside markAllUnpaid:
+code
+JavaScript
+console.log("Selected Month:", selectedMonth);
+console.log("Bill Paid Months:", bill.paidMonths);
+If one has a leading zero and the other doesn't, you need to wrap selectedMonth in a formatter before saving or filtering.
+Why the previous 6 fixes failed:
+The previous developer likely tried to fix the data fetching (Firebase). But based on your description, the data is changing in Firebase—the React component is just refusing to repaint because it thinks the ledgerLinkedMap is still valid.
+By making ledgerLinkedMap depend strictly on the transactions array from your real-time hook, the second the transactions are deleted, the map will empty itself and the checkmarks will vanish.

@@ -47,6 +47,10 @@ function isPaidInMonth(bill: Bill, month: string): boolean {
 }
 
 function findLinkedTransaction(bill: Bill, transactions: Transaction[]): Transaction | undefined {
+  // Primary: explicit billId stored on the transaction (Bill Manager entries)
+  const byId = transactions.find((tx) => tx.billId === bill.id);
+  if (byId) return byId;
+  // Secondary: fuzzy name match for imported transactions only
   const billWords = bill.name
     .toLowerCase()
     .replace(/[^a-z0-9 ]/g, " ")
@@ -55,8 +59,8 @@ function findLinkedTransaction(bill: Bill, transactions: Transaction[]): Transac
   if (billWords.length === 0) return undefined;
   return transactions.find((tx) => {
     if (tx.type === "income") return false;
-    // Entries added by Bill Manager are not "ledger-linked" — they're manually added
     if (tx.note === "Added from Bill Manager") return false;
+    if (tx.billId) return false; // already handled above; don't double-match
     const txName = tx.name.toLowerCase();
     return billWords.some((word) => txName.includes(word));
   });
@@ -496,10 +500,11 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       type: "expense",
       month: selectedMonth,
       note: "Added from Bill Manager",
+      billId: bill.id,
     } as any);
   };
 
-  // Keep the old hook-based version for the singular "mark paid" path (sequential, safe)
+  // Hook-based version for the singular "mark paid" path (sequential, safe)
   const addBillToLedger = (bill: Bill) => {
     const day = String(bill.dueDay).padStart(2, "0");
     const date = `${selectedMonth}-${day}`;
@@ -512,6 +517,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       type: "expense",
       month: selectedMonth,
       note: "Added from Bill Manager",
+      billId: bill.id,
     } as any);
   };
 

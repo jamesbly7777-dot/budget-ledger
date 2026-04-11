@@ -51,6 +51,7 @@ export interface Transaction {
   sourceFile?: string;
   isDuplicate?: boolean;
   splitFrom?: string;
+  billId?: string;
 }
 
 export interface Bill {
