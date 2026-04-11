@@ -212,16 +212,13 @@ export async function getBillManagerLog(userId: string, month: string): Promise<
   const savedLog = snap.exists() ? ((snap.data()?.[month] as Record<string, string>) ?? {}) : {};
 
   const txSnap = await getDocsFromServer(
-    query(
-      userTransactionsCol(userId),
-      where("month", "==", month),
-      where("note", "==", "Added from Bill Manager"),
-    ),
+    query(userTransactionsCol(userId), where("month", "==", month)),
   );
   const liveLog: Record<string, string> = {};
   txSnap.docs.forEach((txDoc) => {
     const tx = txDoc.data() as Transaction;
-    if (tx.billId) liveLog[tx.billId] = txDoc.id;
+    const note = (tx.note ?? "").toLowerCase();
+    if (tx.billId && note.includes("bill manager")) liveLog[tx.billId] = txDoc.id;
   });
 
   return { ...savedLog, ...liveLog };
