@@ -6,3 +6,9 @@ id = "wIqUsXYNKEa7I0BExQlKs"
 uri = "file://Ledger_User_Guide.pdf"
 type = "pdf"
 title = "Ledger — User Guide & Tester Checklist"
+
+[[outputs]]
+id = "bquMs0wmOVAnDQnfU4DAH"
+uri = "file://ledger-source.tar.gz"
+type = "unspecified"
+title = "Ledger App - Full Source Code"
