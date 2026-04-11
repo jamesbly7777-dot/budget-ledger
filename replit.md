@@ -61,6 +61,13 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
   - `src/routes/parseStatement.ts` — AI statement parser
 - **IMPORTANT**: The `paths = ["/"]` in artifact.toml means this server handles all routes. The ledger-app Vite dev server (port 25002) is NOT used for serving in dev — the API server serves the built files from `dist/public`. To see frontend changes in dev, rebuild the ledger-app (`pnpm --filter @workspace/ledger-app run build`) then the API server will serve the new files.
 
+## GitHub Integration
+
+- **GitHub connection**: wired via Replit integrations (`@replit/connectors-sdk`)
+- **Budget Ledger repository**: [jamesbly7777-dot/budget-ledger](https://github.com/jamesbly7777-dot/budget-ledger) (private)
+  - All `artifacts/ledger-app` source files pushed (92 files, excludes `node_modules/` and `dist/`)
+  - Branch: `main`
+
 ## Environment Variables (shared)
 
 - `VITE_FIREBASE_*` — Firebase config for ledger-app

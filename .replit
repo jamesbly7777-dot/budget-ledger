@@ -20,6 +20,7 @@ runButton = "Project"
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
+integrations = ["github:1.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
@@ -35,3 +36,6 @@ VITE_FIREBASE_STORAGE_BUCKET = "full-ledger-app.firebasestorage.app"
 VITE_FIREBASE_MESSAGING_SENDER_ID = "1095553091367"
 VITE_FIREBASE_APP_ID = "1:1095553091367:web:90943f38bbb96c763f0b02"
 VITE_FIREBASE_MEASUREMENT_ID = "G-WWJ1417FSH"
+
+[nix]
+channel = "stable-25_05"
