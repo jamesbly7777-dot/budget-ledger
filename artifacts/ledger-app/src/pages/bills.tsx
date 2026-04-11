@@ -489,22 +489,39 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     } as any);
   };
 
-  const togglePaid = (bill: Bill) => {
+  const togglePaid = async (bill: Bill) => {
     const currentlyManuallyPaid = isPaidInMonth(bill, selectedMonth);
     const currentlyLinked = ledgerLinkedMap.has(bill.id);
     if (currentlyLinked) return; // Auto-paid via ledger — cannot toggle manually
-    if (bill.isRecurring) {
-      const existingPaid = bill.paidMonths ?? (bill.isPaid ? [] : []);
-      const newPaidMonths = currentlyManuallyPaid
-        ? existingPaid.filter((m) => m !== selectedMonth)
-        : [...existingPaid, selectedMonth];
-      updateBill.mutate({ id: bill.id, data: { paidMonths: newPaidMonths } });
-      if (!currentlyManuallyPaid) addBillToLedger(bill);
+
+    if (currentlyManuallyPaid) {
+      // Marking unpaid: reset bill status AND delete the matching auto-added ledger entry
+      if (bill.isRecurring) {
+        const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
+        updateBill.mutate({ id: bill.id, data: { paidMonths: newPaidMonths } });
+      } else {
+        updateBill.mutate({ id: bill.id, data: { isPaid: false } });
+      }
+      // Find and delete the matching ledger entry (fresh fetch to avoid stale cache)
+      const freshResult = await refetchMonthTxs();
+      const match = (freshResult.data ?? []).find(
+        (tx) => tx.note === "Added from Bill Manager" && tx.name === bill.name
+      );
+      if (match) {
+        deleteTx.mutate({ id: match.id, month: selectedMonth });
+        toast({ description: `${bill.name} marked unpaid and ledger entry removed.` });
+      } else {
+        toast({ description: `${bill.name} marked unpaid.` });
+      }
     } else {
-      updateBill.mutate({ id: bill.id, data: { isPaid: !bill.isPaid } });
-      if (!bill.isPaid) addBillToLedger(bill);
-    }
-    if (!currentlyManuallyPaid) {
+      // Marking paid: update bill status and add ledger entry
+      if (bill.isRecurring) {
+        const existingPaid = bill.paidMonths ?? [];
+        await updateBill.mutateAsync({ id: bill.id, data: { paidMonths: [...existingPaid, selectedMonth] } });
+      } else {
+        await updateBill.mutateAsync({ id: bill.id, data: { isPaid: true } });
+      }
+      await addBillToLedger(bill);
       toast({ description: `${bill.name} marked paid and added to Ledger.` });
     }
   };
