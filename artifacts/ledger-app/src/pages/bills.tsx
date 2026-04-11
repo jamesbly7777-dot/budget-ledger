@@ -410,6 +410,8 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingBill, setEditingBill] = useState<Bill | null>(null);
+  const [isTogglingUnpaid, setIsTogglingUnpaid] = useState(false);
   const [formData, setFormData] = useState(BLANK_FORM);
   const [confirmAction, setConfirmAction] = useState<null | "fix" | "clear" | "markAllPaid">(null);
   const [isRunningBulk, setIsRunningBulk] = useState(false);
@@ -670,6 +672,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const openEdit = (b: Bill) => {
     setFormData({ name: b.name, amount: b.amount.toString(), dueDay: b.dueDay.toString(), category: b.category, isRecurring: b.isRecurring });
     setEditingId(b.id);
+    setEditingBill(b);
     setIsDialogOpen(true);
   };
 
@@ -1033,7 +1036,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       </Dialog>
 
       {/* Add / Edit Bill Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setFormData(BLANK_FORM); setEditingId(null); } }}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setFormData(BLANK_FORM); setEditingId(null); setEditingBill(null); } }}>
         <DialogContent className="sm:max-w-[420px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="font-mono uppercase text-primary tracking-wider text-sm">
@@ -1106,13 +1109,44 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
               <Switch checked={formData.isRecurring} onCheckedChange={(v) => setFormData({ ...formData, isRecurring: v })} />
             </div>
           </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="font-mono text-xs uppercase">Cancel</Button>
-            <Button onClick={handleSave} disabled={addBill.isPending || updateBill.isPending} className="font-mono text-xs uppercase">
-              {(addBill.isPending || updateBill.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {editingId ? "Update" : "Add"}
-            </Button>
-          </div>
+          {(() => {
+            const liveBill = editingId ? allMonthBills.find((b) => b.id === editingId) : null;
+            const isManuallyPaid = liveBill ? isPaidInMonth(liveBill, selectedMonth) : false;
+            return (
+              <div className="flex justify-between gap-2 flex-wrap">
+                {isManuallyPaid && (
+                  <Button
+                    variant="outline"
+                    disabled={isTogglingUnpaid}
+                    onClick={async () => {
+                      if (!liveBill) return;
+                      setIsTogglingUnpaid(true);
+                      try {
+                        await togglePaid(liveBill);
+                      } finally {
+                        setIsTogglingUnpaid(false);
+                        setIsDialogOpen(false);
+                        setFormData(BLANK_FORM);
+                        setEditingId(null);
+                        setEditingBill(null);
+                      }
+                    }}
+                    className="font-mono text-xs uppercase text-red-400 border-red-500/40 hover:bg-red-500/10"
+                  >
+                    {isTogglingUnpaid ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Circle className="w-3.5 h-3.5 mr-1.5" />}
+                    Mark Unpaid
+                  </Button>
+                )}
+                <div className="flex gap-2 ml-auto">
+                  <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="font-mono text-xs uppercase">Cancel</Button>
+                  <Button onClick={handleSave} disabled={addBill.isPending || updateBill.isPending} className="font-mono text-xs uppercase">
+                    {(addBill.isPending || updateBill.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    {editingId ? "Update" : "Add"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
