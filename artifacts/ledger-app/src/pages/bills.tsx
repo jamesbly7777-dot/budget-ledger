@@ -483,12 +483,22 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     ? allMonthBills.filter((b) => pc1 < pc2 ? (b.dueDay >= pc2 || b.dueDay < pc1) : (b.dueDay >= pc2 && b.dueDay < pc1))
     : [];
 
-  // Force-flush all cached bill/transaction data from Firestore after direct writes
-  const forceRefreshAll = async () => {
+  // Immediately patch the React Query cache to reflect bill status changes —
+  // this updates the UI right away without waiting for a Firestore round-trip read.
+  const patchBillsCache = (patchFn: (b: Bill) => Bill) => {
+    queryClient.setQueryData(
+      ["bills", user?.uid, undefined],
+      (old: Bill[] | undefined) => old ? old.map(patchFn) : old
+    );
+  };
+
+  // Background flush: invalidate and refetch for eventual server consistency
+  const forceRefreshAll = () => {
     queryClient.invalidateQueries({ queryKey: ["bills", user?.uid] });
     queryClient.invalidateQueries({ queryKey: ["transactions", user?.uid] });
     queryClient.invalidateQueries({ queryKey: ["months", user?.uid] });
-    await Promise.all([refetchBills(), refetchMonthTxs()]);
+    refetchBills();
+    refetchMonthTxs();
   };
 
   // Calls Firestore directly — does NOT use the shared addTx mutation instance
@@ -529,12 +539,15 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     if (currentlyLinked) return; // Auto-paid via ledger — cannot toggle manually
 
     if (currentlyManuallyPaid) {
-      // Marking unpaid — call Firestore directly, never through shared mutation hook
+      // Marking unpaid — write to Firestore directly
       if (bill.isRecurring) {
         const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
         await firestoreService.updateBill(user!.uid, bill.id, { paidMonths: newPaidMonths });
+        // Immediately patch the cache so the UI updates right now
+        patchBillsCache((b) => b.id === bill.id ? { ...b, paidMonths: newPaidMonths } : b);
       } else {
         await firestoreService.updateBill(user!.uid, bill.id, { isPaid: false });
+        patchBillsCache((b) => b.id === bill.id ? { ...b, isPaid: false } : b);
       }
       const log = await firestoreService.getBillManagerLog(user!.uid, selectedMonth);
       const txId = log[bill.id];
@@ -545,19 +558,22 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       } else {
         toast({ description: `${bill.name} marked unpaid.` });
       }
-      await forceRefreshAll();
+      forceRefreshAll();
     } else {
-      // Marking paid — sequential, safe to use mutation hook
+      // Marking paid — write to Firestore directly
       if (bill.isRecurring) {
         const existingPaid = bill.paidMonths ?? [];
-        await updateBill.mutateAsync({ id: bill.id, data: { paidMonths: [...existingPaid, selectedMonth] } });
+        const newPaidMonths = [...existingPaid, selectedMonth];
+        await firestoreService.updateBill(user!.uid, bill.id, { paidMonths: newPaidMonths });
+        patchBillsCache((b) => b.id === bill.id ? { ...b, paidMonths: newPaidMonths } : b);
       } else {
-        await updateBill.mutateAsync({ id: bill.id, data: { isPaid: true } });
+        await firestoreService.updateBill(user!.uid, bill.id, { isPaid: true });
+        patchBillsCache((b) => b.id === bill.id ? { ...b, isPaid: true } : b);
       }
-      const txId = await addBillToLedger(bill);
-      if (txId) await firestoreService.saveBillManagerEntry(user!.uid, selectedMonth, bill.id, txId as string);
+      const txId = await addBillToLedgerDirect(bill);
+      if (txId) await firestoreService.saveBillManagerEntry(user!.uid, selectedMonth, bill.id, txId);
       toast({ description: `${bill.name} marked paid and added to Ledger.` });
-      await forceRefreshAll();
+      forceRefreshAll();
     }
   };
 
@@ -572,13 +588,13 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       const entries = await Promise.all(
         unpaidBills.map(async (bill) => {
           if (bill.isRecurring) {
-            const existingPaid = bill.paidMonths ?? [];
-            await firestoreService.updateBill(user!.uid, bill.id, { paidMonths: [...existingPaid, selectedMonth] });
+            const newPaidMonths = [...(bill.paidMonths ?? []), selectedMonth];
+            await firestoreService.updateBill(user!.uid, bill.id, { paidMonths: newPaidMonths });
           } else {
             await firestoreService.updateBill(user!.uid, bill.id, { isPaid: true });
           }
           const txId = await addBillToLedgerDirect(bill);
-          return { billId: bill.id, txId };
+          return { billId: bill.id, txId, bill };
         })
       );
       // Save txId log so undo knows exactly which transactions to delete
@@ -587,7 +603,14 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           firestoreService.saveBillManagerEntry(user!.uid, selectedMonth, e.billId, e.txId)
         )
       );
-      await forceRefreshAll();
+      // Immediately patch the cache so the UI updates right now
+      const paidIds = new Set(unpaidBills.map((b) => b.id));
+      patchBillsCache((b) => {
+        if (!paidIds.has(b.id)) return b;
+        if (b.isRecurring) return { ...b, paidMonths: [...(b.paidMonths ?? []), selectedMonth] };
+        return { ...b, isPaid: true };
+      });
+      forceRefreshAll();
       toast({ description: `${unpaidBills.length} bill${unpaidBills.length !== 1 ? "s" : ""} marked paid and added to Ledger.` });
     } catch {
       toast({ description: "Something went wrong marking bills paid. Please try again." });
@@ -601,26 +624,42 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const markAllUnpaid = async () => {
     setIsUndoingAll(true);
     try {
-      // 1. Reset all bill statuses directly in Firestore — no shared mutation hook
+      // Build the new state for every bill before writing
+      const billUpdates = allMonthBills.map((bill) => ({
+        bill,
+        newPaidMonths: bill.isRecurring
+          ? (bill.paidMonths ?? []).filter((m) => m !== selectedMonth)
+          : null,
+      }));
+
+      // 1. Write to Firestore directly in parallel
       await Promise.all(
-        allMonthBills.map((bill) => {
-          if (bill.isRecurring) {
-            const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
-            return firestoreService.updateBill(user!.uid, bill.id, { paidMonths: newPaidMonths });
-          } else {
-            return firestoreService.updateBill(user!.uid, bill.id, { isPaid: false });
-          }
-        })
+        billUpdates.map(({ bill, newPaidMonths }) =>
+          bill.isRecurring
+            ? firestoreService.updateBill(user!.uid, bill.id, { paidMonths: newPaidMonths! })
+            : firestoreService.updateBill(user!.uid, bill.id, { isPaid: false })
+        )
       );
 
-      // 2. Look up exact txIds from the log, delete them directly
+      // 2. Immediately patch the React Query cache — UI updates right now, no read needed
+      const unpaidIds = new Set(allMonthBills.map((b) => b.id));
+      const newPaidMonthsById = new Map(
+        billUpdates.filter((u) => u.bill.isRecurring).map((u) => [u.bill.id, u.newPaidMonths!])
+      );
+      patchBillsCache((b) => {
+        if (!unpaidIds.has(b.id)) return b;
+        if (b.isRecurring) return { ...b, paidMonths: newPaidMonthsById.get(b.id) ?? [] };
+        return { ...b, isPaid: false };
+      });
+
+      // 3. Look up exact txIds from the log, delete them directly
       const log = await firestoreService.getBillManagerLog(user!.uid, selectedMonth);
       const txIds = Object.values(log).filter(Boolean);
       await Promise.all(txIds.map((txId) => firestoreService.deleteTransaction(user!.uid, txId)));
       await firestoreService.clearBillManagerMonth(user!.uid, selectedMonth);
 
-      // 3. Force cache flush so the UI reflects the Firestore state
-      await forceRefreshAll();
+      // 4. Background sync to keep server state consistent
+      forceRefreshAll();
 
       toast({
         description: txIds.length > 0
