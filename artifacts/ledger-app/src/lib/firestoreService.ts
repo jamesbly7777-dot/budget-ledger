@@ -218,7 +218,11 @@ export async function getBillManagerLog(userId: string, month: string): Promise<
   txSnap.docs.forEach((txDoc) => {
     const tx = txDoc.data() as Transaction;
     const note = (tx.note ?? "").toLowerCase();
-    if (tx.billId && note.includes("bill manager")) liveLog[tx.billId] = txDoc.id;
+    if (note.includes("bill manager")) {
+      // Use billId as key when available; fall back to txId so old entries (pre-billId) are still included
+      const key = tx.billId ?? txDoc.id;
+      liveLog[key] = txDoc.id;
+    }
   });
 
   return { ...savedLog, ...liveLog };
