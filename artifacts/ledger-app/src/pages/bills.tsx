@@ -53,6 +53,8 @@ function findLinkedTransaction(bill: Bill, transactions: Transaction[]): Transac
   if (billWords.length === 0) return undefined;
   return transactions.find((tx) => {
     if (tx.type === "income") return false;
+    // Entries added by Bill Manager are not "ledger-linked" — they're manually added
+    if (tx.note === "Added from Bill Manager") return false;
     const txName = tx.name.toLowerCase();
     return billWords.some((word) => txName.includes(word));
   });
