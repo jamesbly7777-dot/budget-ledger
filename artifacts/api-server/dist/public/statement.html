@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', monospace; background: #fff; padding: 32px; width: 960px; }
+  .header { border-bottom: 3px solid #1a1a1a; padding-bottom: 16px; margin-bottom: 20px; }
+  .bank-name { font-size: 11px; font-weight: bold; color: #555; letter-spacing: 2px; text-transform: uppercase; }
+  .account { font-size: 22px; font-weight: bold; color: #1a1a1a; margin: 4px 0; }
+  .meta { display: flex; gap: 40px; margin-top: 8px; font-size: 12px; color: #444; }
+  .meta span b { color: #1a1a1a; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead tr { background: #1a1a1a; color: #fff; }
+  thead th { padding: 10px 12px; text-align: left; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+  thead th.amount { text-align: right; }
+  tbody tr { border-bottom: 1px solid #e8e8e8; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+  tbody tr.pending { background: #fffbf0; }
+  tbody tr.income { background: #f0fff4; }
+  td { padding: 9px 12px; vertical-align: middle; }
+  td.date { white-space: nowrap; color: #555; font-size: 11px; }
+  td.desc { color: #1a1a1a; max-width: 440px; }
+  td.desc .sub { font-size: 10px; color: #888; margin-top: 2px; }
+  td.amount { text-align: right; font-weight: bold; white-space: nowrap; }
+  td.amount.debit { color: #c0392b; }
+  td.amount.credit { color: #27ae60; }
+  td.status { text-align: center; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: bold; letter-spacing: 0.5px; text-transform: uppercase; }
+  .badge.cleared { background: #e8f5e9; color: #2e7d32; }
+  .badge.pending { background: #fff3e0; color: #e65100; }
+  .badge.income-badge { background: #e3f2fd; color: #1565c0; }
+  .footer { margin-top: 20px; padding-top: 14px; border-top: 2px solid #1a1a1a; display: flex; justify-content: space-between; font-size: 12px; }
+  .footer .bal { font-size: 18px; font-weight: bold; }
+  .section-label { background: #f0f0f0; }
+  .section-label td { font-size: 10px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; color: #888; padding: 5px 12px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="bank-name">Wells Fargo Bank</div>
+  <div class="account">EVERYDAY CHECKING — Account #...9742</div>
+  <div class="meta">
+    <span>Statement Period: <b>04/08/2026 – 04/11/2026</b></span>
+    <span>Available Balance: <b>$465.96</b></span>
+    <span>Generated: <b>04/11/2026</b></span>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:100px">Date</th>
+      <th>Description</th>
+      <th class="amount" style="width:100px">Amount</th>
+      <th style="width:80px;text-align:center">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+
+    <tr class="section-label"><td colspan="4">04/08/2026 — Cleared Transactions</td></tr>
+
+    <tr>
+      <td class="date">04/08/2026</td>
+      <td class="desc">HOBBY LOBBY VENDIN<div class="sub">SAN ANTONIO TX — CARD 0590</div></td>
+      <td class="amount debit">-$1.25</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/08/2026</td>
+      <td class="desc">HOBBY LOBBY VENDIN<div class="sub">SAN ANTONIO TX — CARD 0590</div></td>
+      <td class="amount debit">-$1.00</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/08/2026</td>
+      <td class="desc">OG&amp;E / USPAYMENTS — ELECTRIC UTILITY<div class="sub">877-306-9274 OK — CARD 0590</div></td>
+      <td class="amount debit">-$75.50</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/08/2026</td>
+      <td class="desc">WALGREENS STORE #2835<div class="sub">2835 SW 2 OKLAHOMA CITY OK — CARD 0590</div></td>
+      <td class="amount debit">-$14.03</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/08/2026</td>
+      <td class="desc">WALGREENS STORE #2835<div class="sub">2835 SW 2 OKLAHOMA CITY OK — CARD 0590</div></td>
+      <td class="amount debit">-$11.64</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/08/2026</td>
+      <td class="desc">FRESH CLIPS BARBER<div class="sub">OKLAHOMA CITY OK — CARD 0590</div></td>
+      <td class="amount debit">-$38.00</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/08/2026</td>
+      <td class="desc">DAVE DAVESUBFEE — APP SUBSCRIPTION<div class="sub">REF 260408 6710436</div></td>
+      <td class="amount debit">-$1.00</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/08/2026</td>
+      <td class="desc">SAVE AS YOU GO TRANSFER<div class="sub">DEBIT TO ACCT XXXXXXXXXX3037</div></td>
+      <td class="amount debit">-$6.00</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+
+    <tr class="section-label"><td colspan="4">04/09/2026 — Cleared Transactions</td></tr>
+
+    <tr class="income">
+      <td class="date">04/09/2026</td>
+      <td class="desc">SHIPT PAY — GIG INCOME<div class="sub">ST-H6U6X0A3Q8D5 JAMES BLY</div></td>
+      <td class="amount credit">+$14.49</td>
+      <td class="status"><span class="badge income-badge">Income</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/09/2026</td>
+      <td class="desc">SAVE AS YOU GO TRANSFER<div class="sub">DEBIT TO ACCT XXXXXXXXXX3037</div></td>
+      <td class="amount debit">-$1.00</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/09/2026</td>
+      <td class="desc">SYNCHRONY BANK CREDIT CARD PAYMENT<div class="sub">APR 09 601911839 19-39425 JAMES BLY</div></td>
+      <td class="amount debit">-$75.00</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/09/2026</td>
+      <td class="desc">WALMART.COM ONLINE PURCHASE<div class="sub">REF 260407 031101118604862 JAMES BLY</div></td>
+      <td class="amount debit">-$45.27</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/09/2026</td>
+      <td class="desc">AFFIRM INC — AFFIRM PAY INSTALLMENT<div class="sub">REF 260408 3919641 JAMES BLY</div></td>
+      <td class="amount debit">-$20.00</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/09/2026</td>
+      <td class="desc">ONLINE TRANSFER — WELLS FARGO REFLECT VISA<div class="sub">REF #IBOXLJMHLR — ON 04/09/26</div></td>
+      <td class="amount debit">-$75.00</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/09/2026</td>
+      <td class="desc">ONLINE TRANSFER — WELLS FARGO ACTIVE CASH VISA<div class="sub">REF #IBOXLJLWM3 — CARD XXXXXX9697</div></td>
+      <td class="amount debit">-$100.00</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/09/2026</td>
+      <td class="desc">AMAZON MARKETPLACE PURCHASE<div class="sub">AMZN.COM/BILL WA — CARD 0590</div></td>
+      <td class="amount debit">-$46.89</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+
+    <tr class="section-label"><td colspan="4">04/10/2026 — Cleared Transactions</td></tr>
+
+    <tr>
+      <td class="date">04/10/2026</td>
+      <td class="desc">AFFIRM INC — AFFIRM PAY INSTALLMENT<div class="sub">REF 260409 4332836 JAMES BLY</div></td>
+      <td class="amount debit">-$30.00</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+    <tr>
+      <td class="date">04/10/2026</td>
+      <td class="desc">WALMART.COM ONLINE PURCHASE<div class="sub">REF 260408 031101118728203 BLY JAMES</div></td>
+      <td class="amount debit">-$3.93</td>
+      <td class="status"><span class="badge cleared">Cleared</span></td>
+    </tr>
+
+    <tr class="section-label"><td colspan="4">04/11/2026 — Pending Transactions</td></tr>
+
+    <tr class="pending">
+      <td class="date">04/11/2026</td>
+      <td class="desc">REPLIT, INC. — SUBSCRIPTION<div class="sub">+16282002281 CA — CARD 0590</div></td>
+      <td class="amount debit">-$50.05</td>
+      <td class="status"><span class="badge pending">Pending</span></td>
+    </tr>
+    <tr class="pending">
+      <td class="date">04/11/2026</td>
+      <td class="desc">GOOGLE *CHAT — SUBSCRIPTION<div class="sub">855-836-3987 CA — CARD 0590</div></td>
+      <td class="amount debit">-$21.19</td>
+      <td class="status"><span class="badge pending">Pending</span></td>
+    </tr>
+    <tr class="pending">
+      <td class="date">04/11/2026</td>
+      <td class="desc">WAL-MART STORE #05<div class="sub">OKLAHOMA CITY OK — CARD 0590</div></td>
+      <td class="amount debit">-$39.73</td>
+      <td class="status"><span class="badge pending">Pending</span></td>
+    </tr>
+    <tr class="pending income">
+      <td class="date">04/11/2026</td>
+      <td class="desc">AMAZON FLEX — GIG INCOME TRANSFER<div class="sub">AMAZON FLEX MONEY TRANSFER CA</div></td>
+      <td class="amount credit">+$92.50</td>
+      <td class="status"><span class="badge income-badge">Income</span></td>
+    </tr>
+    <tr class="pending">
+      <td class="date">04/11/2026</td>
+      <td class="desc">ONCUE STORE #0117<div class="sub">OKLAHOMA CITY OK — CARD 0590</div></td>
+      <td class="amount debit">-$34.86</td>
+      <td class="status"><span class="badge pending">Pending</span></td>
+    </tr>
+    <tr class="pending">
+      <td class="date">04/11/2026</td>
+      <td class="desc">ONCUE STORE #0117<div class="sub">OKLAHOMA CITY OK — CARD 0590</div></td>
+      <td class="amount debit">-$2.16</td>
+      <td class="status"><span class="badge pending">Pending</span></td>
+    </tr>
+    <tr class="pending">
+      <td class="date">04/11/2026</td>
+      <td class="desc">AMAZON / PYRVIA — SUBSCRIPTION PURCHASE<div class="sub">+18332466161 CA — CARD 0590</div></td>
+      <td class="amount debit">-$40.00</td>
+      <td class="status"><span class="badge pending">Pending</span></td>
+    </tr>
+
+  </tbody>
+</table>
+
+<div class="footer">
+  <div>
+    <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Total Transactions: 25</div>
+    <div style="font-size:11px;color:#888;margin-top:4px;">Debits: 23 &nbsp;|&nbsp; Credits/Income: 2 pending + 1 cleared</div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Available Balance</div>
+    <div class="bal">$465.96</div>
+  </div>
+</div>
+</body>
+</html>

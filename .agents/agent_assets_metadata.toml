@@ -12,3 +12,9 @@ id = "bquMs0wmOVAnDQnfU4DAH"
 uri = "file://ledger-source.tar.gz"
 type = "unspecified"
 title = "Ledger App - Full Source Code"
+
+[[outputs]]
+id = "N2XbYxW33O5AJDWHprvZk"
+uri = "file://attached_assets/statement_clean_04-11-2026.jpg"
+type = "image"
+title = "Clean Bank Statement — 04/08–04/11/2026"
