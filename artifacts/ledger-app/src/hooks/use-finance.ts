@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as service from "@/lib/firestoreService";
 import { useAuth } from "@/contexts/AuthContext";
@@ -5,11 +6,20 @@ import { Transaction, Bill, Month, Rule } from "@/lib/types";
 
 export function useTransactions(month?: string) {
   const { user } = useAuth();
-  return useQuery({
-    queryKey: ["transactions", user?.uid, month],
-    queryFn: () => service.getTransactions(user!.uid, month),
-    enabled: !!user,
-  });
+  const [data, setData] = useState<Transaction[] | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) { setData(undefined); setIsLoading(false); return; }
+    setIsLoading(true);
+    const unsubscribe = service.subscribeTransactions(user.uid, month, (txs) => {
+      setData(txs);
+      setIsLoading(false);
+    });
+    return unsubscribe;
+  }, [user?.uid, month]);
+
+  return { data, isLoading, refetch: async () => {} };
 }
 
 export function useAddTransaction() {
@@ -68,11 +78,23 @@ export function useBulkAddTransactions() {
 
 export function useBills(month?: string) {
   const { user } = useAuth();
-  return useQuery({
-    queryKey: ["bills", user?.uid, month],
-    queryFn: () => service.getBills(user!.uid, month),
-    enabled: !!user,
-  });
+  const [data, setData] = useState<Bill[] | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) { setData(undefined); setIsLoading(false); return; }
+    setIsLoading(true);
+    const unsubscribe = service.subscribeBills(user.uid, (allBills) => {
+      const filtered = month
+        ? allBills.filter((b) => !b.month || b.month === month)
+        : allBills;
+      setData(filtered);
+      setIsLoading(false);
+    });
+    return unsubscribe;
+  }, [user?.uid, month]);
+
+  return { data, isLoading, refetch: async () => {} };
 }
 
 export function useAddBill() {

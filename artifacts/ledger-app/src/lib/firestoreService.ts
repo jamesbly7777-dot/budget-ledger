@@ -10,6 +10,7 @@ import {
   query,
   where,
   orderBy,
+  onSnapshot,
   serverTimestamp,
   Timestamp,
   setDoc,
@@ -249,6 +250,33 @@ export function computeCategoryTotals(transactions: Transaction[]): Record<strin
     totals[t.category] = (totals[t.category] ?? 0) + Math.abs(t.amount);
   }
   return totals;
+}
+
+// Real-time listener: fires whenever bills change in Firestore.
+// Returns an unsubscribe function — call it on component unmount.
+export function subscribeBills(userId: string, callback: (bills: Bill[]) => void): () => void {
+  const col = userBillsCol(userId);
+  return onSnapshot(col, (snap) => {
+    const bills = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Bill, "id">) }));
+    callback(bills);
+  });
+}
+
+// Real-time listener: fires whenever transactions change in Firestore.
+// Optionally filtered to a specific month.
+export function subscribeTransactions(
+  userId: string,
+  month: string | undefined,
+  callback: (txs: Transaction[]) => void
+): () => void {
+  const col = userTransactionsCol(userId);
+  const q = month ? query(col, where("month", "==", month)) : query(col);
+  return onSnapshot(q, (snap) => {
+    const txs = snap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as Omit<Transaction, "id">) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    callback(txs);
+  });
 }
 
 export function computeIncomeTotals(transactions: Transaction[]): Record<string, number> {
