@@ -5,6 +5,7 @@ import {
   updateDoc,
   deleteDoc,
   getDocs,
+  getDocsFromServer,
   getDoc,
   query,
   where,
@@ -43,7 +44,7 @@ export async function getTransactions(userId: string, month?: string): Promise<T
   const q = month
     ? query(col, where("month", "==", month))
     : query(col);
-  const snap = await getDocs(q);
+  const snap = await getDocsFromServer(q);
   const txs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Transaction, "id">) }));
   return txs.sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -92,7 +93,7 @@ export async function bulkAddTransactions(userId: string, txs: Omit<Transaction,
 
 export async function getBills(userId: string, month?: string): Promise<Bill[]> {
   const col = userBillsCol(userId);
-  const snap = await getDocs(col);
+  const snap = await getDocsFromServer(col);
   const bills = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Bill, "id">) }));
   if (month) return bills.filter((b) => !b.month || b.month === month);
   return bills;
@@ -126,7 +127,7 @@ export async function deleteBill(userId: string, billId: string): Promise<void> 
 
 export async function getMonths(userId: string): Promise<Month[]> {
   const col = userMonthsCol(userId);
-  const snap = await getDocs(query(col, orderBy("month", "desc")));
+  const snap = await getDocsFromServer(query(col, orderBy("month", "desc")));
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Month, "id">) }));
 }
 
