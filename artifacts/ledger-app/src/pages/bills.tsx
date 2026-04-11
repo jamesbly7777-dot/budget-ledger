@@ -371,7 +371,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   // All transactions (background) used for Detect feature
   const { data: allTxs } = useTransactions();
   // Selected month transactions used for Ledger ↔ Bill Manager link detection
-  const { data: monthTxs } = useTransactions(selectedMonth);
+  const { data: monthTxs, refetch: refetchMonthTxs } = useTransactions(selectedMonth);
   const addBill = useAddBill();
   const updateBill = useUpdateBill();
   const deleteBill = useDeleteBill();
@@ -524,24 +524,37 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     toast({ description: "All bills marked paid and added to Ledger." });
   };
 
-  const markAllUnpaid = () => {
-    // Remove selectedMonth from paidMonths for recurring, set isPaid=false for one-off
-    for (const bill of allMonthBills) {
-      if (!isPaidInMonth(bill, selectedMonth)) continue; // skip ledger-linked ones; only undo manual
-      if (bill.isRecurring) {
-        const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
-        updateBill.mutate({ id: bill.id, data: { paidMonths: newPaidMonths } });
-      } else {
-        updateBill.mutate({ id: bill.id, data: { isPaid: false } });
+  const [isUndoingAll, setIsUndoingAll] = useState(false);
+
+  const markAllUnpaid = async () => {
+    setIsUndoingAll(true);
+    try {
+      // 1. Reset paid status on ALL bills for this month unconditionally
+      //    (don't rely on cached isPaidInMonth — it may be stale right after markAllPaid)
+      for (const bill of allMonthBills) {
+        if (bill.isRecurring) {
+          const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
+          updateBill.mutate({ id: bill.id, data: { paidMonths: newPaidMonths } });
+        } else {
+          updateBill.mutate({ id: bill.id, data: { isPaid: false } });
+        }
       }
-    }
-    // Delete ledger transactions that were auto-added from Bill Manager for this month
-    if (monthTxs) {
-      const autoAdded = monthTxs.filter((tx) => tx.note === "Added from Bill Manager");
+
+      // 2. Force-fetch fresh transactions (cached monthTxs is stale after markAllPaid)
+      const freshResult = await refetchMonthTxs();
+      const freshTxs = freshResult.data ?? [];
+      const autoAdded = freshTxs.filter((tx) => tx.note === "Added from Bill Manager");
       for (const tx of autoAdded) {
         deleteTx.mutate({ id: tx.id, month: selectedMonth });
       }
-      toast({ description: `Undone. Removed ${autoAdded.length} auto-added ledger entr${autoAdded.length === 1 ? "y" : "ies"}.` });
+
+      toast({
+        description: autoAdded.length > 0
+          ? `Undone. Removed ${autoAdded.length} auto-added ledger entr${autoAdded.length === 1 ? "y" : "ies"}.`
+          : "Bills marked unpaid.",
+      });
+    } finally {
+      setIsUndoingAll(false);
     }
   };
 
@@ -749,8 +762,9 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
               <Button variant="ghost" size="sm" onClick={() => setConfirmAction("markAllPaid")} className="h-7 font-mono text-xs text-muted-foreground hover:text-green-400">
                 <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> Mark All Paid
               </Button>
-              <Button variant="ghost" size="sm" onClick={markAllUnpaid} className="h-7 font-mono text-xs text-muted-foreground hover:text-red-400">
-                <Circle className="h-3.5 w-3.5 mr-1.5" /> Undo All
+              <Button variant="ghost" size="sm" onClick={markAllUnpaid} disabled={isUndoingAll} className="h-7 font-mono text-xs text-muted-foreground hover:text-red-400">
+                {isUndoingAll ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Circle className="h-3.5 w-3.5 mr-1.5" />}
+                Undo All
               </Button>
             </div>
           </div>
