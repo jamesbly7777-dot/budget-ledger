@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useBills, useAddBill, useUpdateBill, useDeleteBill, useDeleteTransaction, useTransactions, useAddTransaction, useCustomCategories, useSaveCustomCategories } from "@/hooks/use-finance";
+import * as firestoreService from "@/lib/firestoreService";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -369,7 +371,8 @@ function SectionHeader({
 }
 
 export default function BillsPage({ selectedMonth }: { selectedMonth: string }) {
-  const { data: bills, isLoading: billsLoading } = useBills();
+  const { user } = useAuth();
+  const { data: bills, isLoading: billsLoading, refetch: refetchBills } = useBills();
   // All transactions (background) used for Detect feature
   const { data: allTxs } = useTransactions();
   // Selected month transactions used for Ledger ↔ Bill Manager link detection
@@ -504,10 +507,10 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       } else {
         await updateBill.mutateAsync({ id: bill.id, data: { isPaid: false } });
       }
-      // Fresh fetch — find and delete the matching auto-added ledger entry
-      const freshResult = await refetchMonthTxs();
+      // Direct Firestore query — bypasses React Query cache entirely
+      const allMonthTxsDirect = await firestoreService.getTransactions(user!.uid, selectedMonth);
       const normalizedBillName = bill.name.trim().toLowerCase();
-      const match = (freshResult.data ?? []).find(
+      const match = allMonthTxsDirect.find(
         (tx) =>
           tx.note === "Added from Bill Manager" &&
           tx.name.trim().toLowerCase() === normalizedBillName
@@ -518,6 +521,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       } else {
         toast({ description: `${bill.name} marked unpaid.` });
       }
+      await refetchMonthTxs();
     } else {
       // Marking paid: update bill status and add ledger entry
       if (bill.isRecurring) {
@@ -575,11 +579,12 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         })
       );
 
-      // 2. Fresh fetch then delete all auto-added entries for this month
-      const freshResult = await refetchMonthTxs();
-      const freshTxs = freshResult.data ?? [];
-      const autoAdded = freshTxs.filter((tx) => tx.note === "Added from Bill Manager");
+      // 2. Direct Firestore query — bypasses React Query cache entirely
+      const allMonthTxsDirect = await firestoreService.getTransactions(user!.uid, selectedMonth);
+      const autoAdded = allMonthTxsDirect.filter((tx) => tx.note === "Added from Bill Manager");
       await Promise.all(autoAdded.map((tx) => deleteTx.mutateAsync({ id: tx.id, month: selectedMonth })));
+      // Force UI refresh
+      await Promise.all([refetchBills(), refetchMonthTxs()]);
 
       toast({
         description: autoAdded.length > 0
