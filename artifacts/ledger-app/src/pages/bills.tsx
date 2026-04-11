@@ -585,6 +585,12 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           firestoreService.saveBillManagerEntry(user!.uid, selectedMonth, e.billId, e.txId!)
         )
       );
+      // Save snapshot of affected bill IDs so Undo All can revert only these bills
+      await firestoreService.saveMarkAllPaidAffectedBillIds(
+        user!.uid,
+        selectedMonth,
+        billsToMark.map((b) => b.id),
+      );
       toast({ description: `${billsToMark.length} bill${billsToMark.length !== 1 ? "s" : ""} marked paid.` });
     } catch {
       toast({ description: "Something went wrong marking bills paid. Please try again." });
@@ -598,9 +604,16 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const markAllUnpaid = async () => {
     setIsUndoingAll(true);
     try {
-      // 1. Write to Firestore directly in parallel; onSnapshot fires automatically when done
+      // 1. Determine which bills to revert — use the snapshot from the last Mark All Paid run.
+      //    Legacy fallback: if no snapshot exists, revert all bills in the month.
+      const snapshotBillIds = await firestoreService.getMarkAllPaidAffectedBillIds(user!.uid, selectedMonth);
+      const billsToRevert = snapshotBillIds
+        ? allMonthBills.filter((b) => snapshotBillIds.includes(b.id))
+        : allMonthBills;
+
+      // 2. Clear paidMonths / isPaid only for the bills that were marked by Mark All Paid
       await Promise.all(
-        allMonthBills.map((bill) =>
+        billsToRevert.map((bill) =>
           bill.isRecurring
             ? firestoreService.updateBill(user!.uid, bill.id, {
                 paidMonths: (bill.paidMonths ?? []).filter((m) => m !== selectedMonth),
@@ -609,16 +622,19 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         )
       );
 
-      // 2. Look up exact txIds from the log, delete them
-      const log = await firestoreService.getBillManagerLog(user!.uid, selectedMonth);
-      const txIds = Object.values(log).filter(Boolean);
-      await Promise.all(txIds.map((txId) => firestoreService.deleteTransaction(user!.uid, txId)));
+      // 3. Delete all Bill Manager ledger entries for each affected bill (handles duplicates)
+      await Promise.all(
+        billsToRevert.map((bill) =>
+          firestoreService.deleteAllBillManagerEntriesForBill(user!.uid, selectedMonth, bill.id)
+        )
+      );
+
+      // 4. Clear the log and snapshot
       await firestoreService.clearBillManagerMonth(user!.uid, selectedMonth);
+      await firestoreService.clearMarkAllPaidSnapshot(user!.uid, selectedMonth);
 
       toast({
-        description: txIds.length > 0
-          ? `Undone. Removed ${txIds.length} ledger entr${txIds.length === 1 ? "y" : "ies"}.`
-          : "Bills marked unpaid.",
+        description: `Undone. ${billsToRevert.length} bill${billsToRevert.length !== 1 ? "s" : ""} marked unpaid.`,
       });
     } finally {
       setIsUndoingAll(false);

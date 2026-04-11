@@ -238,6 +238,27 @@ export async function clearBillManagerMonth(userId: string, month: string): Prom
   await setDoc(ref, { [month]: {} }, { merge: true });
 }
 
+// Snapshot of which bill IDs were affected by the last "Mark All Paid" run for a given month.
+// Stored separately from billManagerLog so Undo All can precisely target only those bills.
+export async function saveMarkAllPaidAffectedBillIds(userId: string, month: string, billIds: string[]): Promise<void> {
+  const ref = doc(db, "users", userId, "settings", "billManagerMarkAllSnapshot");
+  await setDoc(ref, { [month]: billIds }, { merge: true });
+}
+
+export async function getMarkAllPaidAffectedBillIds(userId: string, month: string): Promise<string[] | null> {
+  const ref = doc(db, "users", userId, "settings", "billManagerMarkAllSnapshot");
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  const ids = data?.[month];
+  return Array.isArray(ids) ? ids : null;
+}
+
+export async function clearMarkAllPaidSnapshot(userId: string, month: string): Promise<void> {
+  const ref = doc(db, "users", userId, "settings", "billManagerMarkAllSnapshot");
+  await setDoc(ref, { [month]: deleteField() }, { merge: true });
+}
+
 export async function removeBillManagerEntry(userId: string, month: string, billId: string): Promise<void> {
   const ref = doc(db, "users", userId, "settings", "billManagerLog");
   // Use setDoc with merge so it doesn't throw if the document doesn't exist yet
