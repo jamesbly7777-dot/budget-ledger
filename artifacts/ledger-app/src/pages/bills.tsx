@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useBills, useAddBill, useUpdateBill, useDeleteBill, useTransactions, useAddTransaction, useCustomCategories, useSaveCustomCategories } from "@/hooks/use-finance";
+import { useBills, useAddBill, useUpdateBill, useDeleteBill, useDeleteTransaction, useTransactions, useAddTransaction, useCustomCategories, useSaveCustomCategories } from "@/hooks/use-finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -375,6 +375,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const addBill = useAddBill();
   const updateBill = useUpdateBill();
   const deleteBill = useDeleteBill();
+  const deleteTx = useDeleteTransaction();
   const addTx = useAddTransaction();
   const { toast } = useToast();
   const { data: customCats = [] } = useCustomCategories();
@@ -405,7 +406,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState(BLANK_FORM);
-  const [confirmAction, setConfirmAction] = useState<null | "fix" | "clear">(null);
+  const [confirmAction, setConfirmAction] = useState<null | "fix" | "clear" | "markAllPaid">(null);
   const [isRunningBulk, setIsRunningBulk] = useState(false);
 
   const [recurringCollapsed, setRecurringCollapsed] = useState(false);
@@ -518,6 +519,29 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         updateBill.mutate({ id: bill.id, data: { isPaid: true } });
       }
       addBillToLedger(bill);
+    }
+    setConfirmAction(null);
+    toast({ description: "All bills marked paid and added to Ledger." });
+  };
+
+  const markAllUnpaid = () => {
+    // Remove selectedMonth from paidMonths for recurring, set isPaid=false for one-off
+    for (const bill of allMonthBills) {
+      if (!isPaidInMonth(bill, selectedMonth)) continue; // skip ledger-linked ones; only undo manual
+      if (bill.isRecurring) {
+        const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
+        updateBill.mutate({ id: bill.id, data: { paidMonths: newPaidMonths } });
+      } else {
+        updateBill.mutate({ id: bill.id, data: { isPaid: false } });
+      }
+    }
+    // Delete ledger transactions that were auto-added from Bill Manager for this month
+    if (monthTxs) {
+      const autoAdded = monthTxs.filter((tx) => tx.note === "Added from Bill Manager");
+      for (const tx of autoAdded) {
+        deleteTx.mutate({ id: tx.id, month: selectedMonth });
+      }
+      toast({ description: `Undone. Removed ${autoAdded.length} auto-added ledger entr${autoAdded.length === 1 ? "y" : "ies"}.` });
     }
   };
 
@@ -721,9 +745,14 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             <span className="text-xs font-mono text-muted-foreground">
               {allMonthBills.filter(isEffectivelyPaid).length} of {allMonthBills.length} paid
             </span>
-            <Button variant="ghost" size="sm" onClick={markAllPaid} className="h-7 font-mono text-xs text-muted-foreground hover:text-green-400">
-              <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> Mark All Paid
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setConfirmAction("markAllPaid")} className="h-7 font-mono text-xs text-muted-foreground hover:text-green-400">
+                <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> Mark All Paid
+              </Button>
+              <Button variant="ghost" size="sm" onClick={markAllUnpaid} className="h-7 font-mono text-xs text-muted-foreground hover:text-red-400">
+                <Circle className="h-3.5 w-3.5 mr-1.5" /> Undo All
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -850,6 +879,27 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           })}
         </div>
       )}
+
+      {/* Confirm: Mark All Paid */}
+      <Dialog open={confirmAction === "markAllPaid"} onOpenChange={(o) => !o && setConfirmAction(null)}>
+        <DialogContent className="sm:max-w-[400px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-green-400 tracking-wider text-sm">Mark All Bills Paid?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm font-mono text-muted-foreground">
+            This will mark <span className="text-primary">{allMonthBills.filter((b) => !isEffectivelyPaid(b)).length} unpaid bill{allMonthBills.filter((b) => !isEffectivelyPaid(b)).length !== 1 ? "s" : ""}</span> as paid for {selectedMonth} and add a matching transaction to your Ledger for each one.
+          </p>
+          <p className="text-xs font-mono text-muted-foreground/70 mt-1">
+            You can undo this anytime with the <span className="text-red-400">Undo All</span> button — it removes the paid status and deletes the auto-added Ledger entries.
+          </p>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setConfirmAction(null)} className="font-mono text-xs uppercase">Cancel</Button>
+            <Button onClick={markAllPaid} className="font-mono text-xs uppercase bg-green-500/20 text-green-400 border border-green-500/40 hover:bg-green-500/30">
+              <CheckCircle2 className="w-4 h-4 mr-2" /> Confirm
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirm: Fix Bill Types */}
       <Dialog open={confirmAction === "fix"} onOpenChange={(o) => !o && setConfirmAction(null)}>
