@@ -207,10 +207,26 @@ export async function reapplyRulesToTransactions(
 // Allows exact undo of ledger entries created by Mark All Paid / individual toggles.
 
 export async function getBillManagerLog(userId: string, month: string): Promise<Record<string, string>> {
+  // 1. Read the saved log
   const ref = doc(db, "users", userId, "settings", "billManagerLog");
   const snap = await getDoc(ref);
-  if (!snap.exists()) return {};
-  return (snap.data()?.[month] as Record<string, string>) ?? {};
+  const savedLog: Record<string, string> = snap.exists()
+    ? ((snap.data()?.[month] as Record<string, string>) ?? {})
+    : {};
+
+  // 2. Also scan live transactions for Bill Manager entries this month.
+  //    This recovers undo data even when the saved log is missing or stale.
+  const col = userTransactionsCol(userId);
+  const q = query(col, where("month", "==", month), where("note", "==", "Added from Bill Manager"));
+  const liveSnap = await getDocsFromServer(q);
+  const liveLog: Record<string, string> = {};
+  liveSnap.docs.forEach((d) => {
+    const billId = (d.data() as any).billId as string | undefined;
+    if (billId) liveLog[billId] = d.id;
+  });
+
+  // 3. Merge: live entries win over saved (they are the ground truth)
+  return { ...savedLog, ...liveLog };
 }
 
 export async function saveBillManagerEntry(userId: string, month: string, billId: string, txId: string): Promise<void> {
