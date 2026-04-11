@@ -240,7 +240,8 @@ export async function clearBillManagerMonth(userId: string, month: string): Prom
 
 export async function removeBillManagerEntry(userId: string, month: string, billId: string): Promise<void> {
   const ref = doc(db, "users", userId, "settings", "billManagerLog");
-  await updateDoc(ref, { [`${month}.${billId}`]: deleteField() });
+  // Use setDoc with merge so it doesn't throw if the document doesn't exist yet
+  await setDoc(ref, { [month]: { [billId]: deleteField() } }, { merge: true });
 }
 
 // Delete every "Added from Bill Manager" transaction for a specific bill in a given month.

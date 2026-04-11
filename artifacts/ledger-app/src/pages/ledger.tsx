@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Loader2, Plus, Search, Download, Edit2, Trash2, ScanSearch,
-  AlertTriangle, Scissors,
+  AlertTriangle, Scissors, X, PlusCircle,
 } from "lucide-react";
 import { CategorySelect } from "@/components/ui/CategorySelect";
 import { Input } from "@/components/ui/input";
