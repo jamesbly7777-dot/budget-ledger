@@ -527,24 +527,18 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     const currentlyPaid = currentlyManuallyPaid || !!linkedTx;
 
     if (currentlyPaid) {
-      // Marking unpaid — clear paidMonths AND remove any linked ledger entry
-      if (currentlyManuallyPaid) {
-        if (bill.isRecurring) {
-          await firestoreService.updateBill(user!.uid, bill.id, {
-            paidMonths: (bill.paidMonths ?? []).filter((m) => m !== selectedMonth),
-          });
-        } else {
-          await firestoreService.updateBill(user!.uid, bill.id, { isPaid: false });
-        }
-        const log = await firestoreService.getBillManagerLog(user!.uid, selectedMonth);
-        const logTxId = log[bill.id];
-        if (logTxId) {
-          await firestoreService.deleteTransaction(user!.uid, logTxId);
-          await firestoreService.removeBillManagerEntry(user!.uid, selectedMonth, bill.id);
-        }
+      // 1. Clear paidMonths flag
+      if (bill.isRecurring) {
+        await firestoreService.updateBill(user!.uid, bill.id, {
+          paidMonths: (bill.paidMonths ?? []).filter((m) => m !== selectedMonth),
+        });
+      } else {
+        await firestoreService.updateBill(user!.uid, bill.id, { isPaid: false });
       }
-      // If linked via ledger (imported OR bill manager), remove that transaction too
-      if (linkedTx) {
+      // 2. Delete ALL Bill Manager entries for this bill in this month (handles duplicates)
+      await firestoreService.deleteAllBillManagerEntriesForBill(user!.uid, selectedMonth, bill.id);
+      // 3. If linked via an imported transaction (no billId), delete that too
+      if (linkedTx && !linkedTx.billId) {
         await firestoreService.deleteTransaction(user!.uid, linkedTx.id);
       }
       toast({ description: `${bill.name} marked unpaid.` });

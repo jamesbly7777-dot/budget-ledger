@@ -243,6 +243,23 @@ export async function removeBillManagerEntry(userId: string, month: string, bill
   await updateDoc(ref, { [`${month}.${billId}`]: deleteField() });
 }
 
+// Delete every "Added from Bill Manager" transaction for a specific bill in a given month.
+// This is more reliable than relying on the saved log, which can be stale or missing.
+export async function deleteAllBillManagerEntriesForBill(userId: string, month: string, billId: string): Promise<void> {
+  const snap = await getDocsFromServer(
+    query(userTransactionsCol(userId), where("month", "==", month)),
+  );
+  const toDelete = snap.docs.filter((d) => {
+    const tx = d.data() as Transaction;
+    const note = (tx.note ?? "").toLowerCase();
+    return note.includes("bill manager") && (tx.billId === billId);
+  });
+  await Promise.all(toDelete.map((d) => deleteDoc(d.ref)));
+  if (toDelete.length > 0) {
+    await removeBillManagerEntry(userId, month, billId);
+  }
+}
+
 export async function getCustomCategories(userId: string): Promise<string[]> {
   const ref = doc(db, "users", userId, "settings", "categories");
   const snap = await getDoc(ref);
