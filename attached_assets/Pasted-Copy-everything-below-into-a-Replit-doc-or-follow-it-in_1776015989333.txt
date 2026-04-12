@@ -1,0 +1,61 @@
+Copy everything below into a Replit doc or follow it in order. Swap paths only if your repl layout is different.
+
+1) Shell (Replit Shell tab)
+If you use Git in the repl:
+
+cd "$REPL_HOME"
+git pull
+Install dependencies (your project uses pnpm + catalog: — use pnpm, not plain npm):
+
+cd "$REPL_HOME"
+pnpm install
+Build the ledger app (Vite needs PORT and BASE_PATH when not doing a production-only build — your vite.config.ts requires them for dev; for build the config only throws if not building — I'll check... Actually from earlier read, isBuild = process.argv.includes("build") so for pnpm run build it might not need PORT. Let me recall - if (!isBuild && !rawPort) throw - so build skips PORT requirement. Good.
+
+For preview/dev they need PORT and BASE_PATH.
+
+I'll give:
+
+cd "$REPL_HOME"
+pnpm install
+pnpm --filter @workspace/ledger-app run build
+If --filter fails, try:
+
+cd "$REPL_HOME/ledger-app"
+pnpm run build
+Build/start API if your repl runs the combined server (adjust to your .replit):
+
+cd "$REPL_HOME"
+pnpm --filter @workspace/api-server run build
+pnpm --filter @workspace/api-server run start
+If your Run button already runs a script, use that after pnpm install instead of duplicating start commands.
+
+2) Replit Secrets (same names your app expects)
+Add or verify:
+
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_STORAGE_BUCKET
+VITE_FIREBASE_MESSAGING_SENDER_ID
+VITE_FIREBASE_APP_ID
+VITE_FIREBASE_MEASUREMENT_ID (optional)
+AI_INTEGRATIONS_OPENAI_BASE_URL (if you use AI statement import)
+AI_INTEGRATIONS_OPENAI_API_KEY
+PORT (your API entry index.ts requires this)
+API_SERVER_PORT (optional; ledger-app vite proxy defaults to 8080)
+For Vite dev (if you run vite not build), also set:
+
+PORT (e.g. 3000)
+BASE_PATH (e.g. /)
+3) Code to deploy (if not using git pull)
+Upload or sync these files from your PC into the same paths in the repl:
+
+ledger-app/src/lib/firestoreService.ts
+ledger-app/src/pages/bills.tsx
+ledger-app/src/pages/ledger.tsx
+ledger-app/src/pages/import.tsx
+api-server/src/routes/parseStatement.ts
+4) One-line “tell Replit” summary (paste to a teammate or note)
+“Run pnpm install at the repo root, set Firebase + OpenAI + PORT secrets, then run the repl’s normal build/start (or pnpm --filter @workspace/ledger-app run build and start the API). Deploy the five updated files if we’re not using git pull.”
+
+If a command errors, paste the exact error and your repl’s folder list (where ledger-app and package.json live) and we can match commands to your layout.
