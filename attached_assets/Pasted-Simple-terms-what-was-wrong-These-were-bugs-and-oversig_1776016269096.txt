@@ -1,0 +1,25 @@
+Simple terms: what was wrong
+These were bugs and oversights in the app’s own code (the Ledger project). Replit didn’t break anything — it only runs whatever code you put there. Same bugs would show up on Netlify, your PC, etc.
+
+Here’s what was actually wrong and why it happened (in normal language):
+
+1. “Undo all paid” didn’t put things back how they were
+What was wrong: “Mark all paid” only updated bills that weren’t already paid. “Undo all” was clearing every bill for the month — including ones you’d already marked paid before.
+Why: The undo step was written too broadly. Nobody stored “which bills this button actually changed,” so the app couldn’t reverse only that.
+2. Split transaction screen could crash
+What was wrong: The UI used icons named X and PlusCircle but never imported them.
+Why: Easy copy-paste / refactor mistake — the components were used, the imports weren’t added. Browsers only complain when you open that screen.
+3. AI statement import sometimes labeled rows wrong
+What was wrong: For image uploads, if the model returned a bad line (only date, amount, type), the server could use the word “expense” or “income” as the merchant name.
+Why: A “fallback” was written for missing text, but it pointed at the wrong column (the type column instead of a real description).
+4. “Low confidence” from AI could apply to the wrong transactions
+What was wrong: The code matched “low confidence” by row number (1st result, 2nd result…). But the rules engine can drop rows (e.g. “skip” rules), so the numbering no longer lined up.
+Why: Two steps assumed the lists were always the same length; they aren’t when rows are removed in the middle.
+5. Undo did the same Firestore read twice
+What was wrong: Harmless but sloppy — same log fetched twice in one click.
+Why: Code grew in steps; nobody merged the duplicate call.
+6. Your local folder couldn’t npm install
+What was wrong: Plain npm doesn’t understand the catalog: dependency style; that’s a pnpm / monorepo setup.
+Why: The project is set up for a workspace (like on Replit), not a single-folder npm project. That’s configuration, not a Replit mistake.
+“Why did Replit make these mistakes?” — short answer
+It didn’t. Replit is the place you run and host the app. The mistakes were in how the app was coded (logic too broad, wrong fallback, index vs identity, missing imports). Fixing the code fixes the behavior everywhere, including Replit.
