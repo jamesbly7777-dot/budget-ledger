@@ -69,58 +69,58 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-card border-border">
+        <Card style={{ borderColor: "rgba(52,211,153,0.35)", boxShadow: "0 0 0 1px rgba(52,211,153,0.08), inset 0 1px 0 rgba(52,211,153,0.15), 0 0 32px rgba(52,211,153,0.10), 0 4px 24px rgba(0,0,0,0.4)" }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Income</CardTitle>
+            <CardTitle className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Total Income</CardTitle>
             <TrendingUp className="h-4 w-4 text-emerald-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold font-mono text-emerald-400">${totalIncome.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground mt-1 font-mono">{income.length} source{income.length !== 1 ? "s" : ""} this month</p>
+            <div className="text-3xl font-bold font-mono text-emerald-400" style={{ textShadow: "0 0 20px rgba(52,211,153,0.5)" }}>${totalIncome.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground mt-1.5 font-mono uppercase tracking-wider">{income.length} source{income.length !== 1 ? "s" : ""} this month</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border">
+        <Card style={{ borderColor: "rgba(239,68,68,0.35)", boxShadow: "0 0 0 1px rgba(239,68,68,0.08), inset 0 1px 0 rgba(239,68,68,0.15), 0 0 32px rgba(239,68,68,0.10), 0 4px 24px rgba(0,0,0,0.4)" }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Spending</CardTitle>
+            <CardTitle className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Total Spending</CardTitle>
             <TrendingDown className="h-4 w-4 text-red-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold font-mono text-red-400">${totalSpending.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground mt-1 font-mono">{expenses.length} transaction{expenses.length !== 1 ? "s" : ""}</p>
+            <div className="text-3xl font-bold font-mono text-red-400" style={{ textShadow: "0 0 20px rgba(239,68,68,0.5)" }}>${totalSpending.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground mt-1.5 font-mono uppercase tracking-wider">{expenses.length} transaction{expenses.length !== 1 ? "s" : ""}</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border">
+        <Card style={{ borderColor: net >= 0 ? "rgba(52,211,153,0.35)" : "rgba(239,68,68,0.35)", boxShadow: net >= 0 ? "0 0 0 1px rgba(52,211,153,0.08), inset 0 1px 0 rgba(52,211,153,0.15), 0 0 32px rgba(52,211,153,0.10), 0 4px 24px rgba(0,0,0,0.4)" : "0 0 0 1px rgba(239,68,68,0.08), inset 0 1px 0 rgba(239,68,68,0.15), 0 0 32px rgba(239,68,68,0.10), 0 4px 24px rgba(0,0,0,0.4)" }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Net Cash Flow</CardTitle>
+            <CardTitle className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Net Cash Flow</CardTitle>
             <Activity className={`h-4 w-4 ${net >= 0 ? "text-emerald-400" : "text-destructive"}`} />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold font-mono ${net >= 0 ? "text-emerald-400" : "text-destructive"}`}>
+            <div className={`text-3xl font-bold font-mono ${net >= 0 ? "text-emerald-400" : "text-destructive"}`} style={{ textShadow: net >= 0 ? "0 0 20px rgba(52,211,153,0.5)" : "0 0 20px rgba(239,68,68,0.5)" }}>
               {net >= 0 ? "+" : ""}${net.toFixed(2)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1 font-mono">{net >= 0 ? "Surplus" : "Deficit"} this month</p>
+            <p className="text-xs text-muted-foreground mt-1.5 font-mono uppercase tracking-wider">{net >= 0 ? "Surplus" : "Deficit"} this month</p>
           </CardContent>
         </Card>
 
-        <Card className={`border-2 ${billsTotal === 0 ? "border-border bg-card" : isCovered ? "border-green-500/30 bg-green-500/5" : "border-red-500/30 bg-red-500/5"}`}>
+        <Card className={billsTotal === 0 ? "" : isCovered ? "" : ""} style={{ borderColor: billsTotal === 0 ? "rgba(56,155,255,0.18)" : isCovered ? "rgba(52,211,153,0.35)" : "rgba(239,68,68,0.35)", boxShadow: billsTotal === 0 ? "0 0 0 1px rgba(56,155,255,0.06), inset 0 1px 0 rgba(56,155,255,0.10), 0 4px 24px rgba(0,0,0,0.4)" : isCovered ? "0 0 0 1px rgba(52,211,153,0.08), inset 0 1px 0 rgba(52,211,153,0.15), 0 0 32px rgba(52,211,153,0.10), 0 4px 24px rgba(0,0,0,0.4)" : "0 0 0 1px rgba(239,68,68,0.08), inset 0 1px 0 rgba(239,68,68,0.15), 0 0 32px rgba(239,68,68,0.10), 0 4px 24px rgba(0,0,0,0.4)" }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Bill Coverage</CardTitle>
+            <CardTitle className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Bill Coverage</CardTitle>
             {billsTotal === 0 ? <ShieldAlert className="h-4 w-4 text-muted-foreground" /> : isCovered ? <ShieldCheck className="h-4 w-4 text-green-400" /> : <ShieldAlert className="h-4 w-4 text-red-400" />}
           </CardHeader>
           <CardContent>
             {billsTotal === 0 ? (
               <>
-                <div className="text-2xl font-bold font-mono text-muted-foreground">—</div>
-                <p className="text-xs text-muted-foreground mt-1 font-mono">No bills tracked</p>
+                <div className="text-3xl font-bold font-mono text-muted-foreground">—</div>
+                <p className="text-xs text-muted-foreground mt-1.5 font-mono uppercase tracking-wider">No bills tracked</p>
               </>
             ) : (
               <>
-                <div className={`text-2xl font-bold font-mono ${isCovered ? "text-green-400" : "text-red-400"}`}>
+                <div className={`text-3xl font-bold font-mono ${isCovered ? "text-green-400" : "text-red-400"}`} style={{ textShadow: isCovered ? "0 0 20px rgba(52,211,153,0.5)" : "0 0 20px rgba(239,68,68,0.5)" }}>
                   {billsCoverageRate !== null ? `${billsCoverageRate.toFixed(0)}%` : "—"}
                 </div>
-                <p className={`text-xs mt-1 font-mono ${safeToSpend >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                <p className={`text-xs mt-1.5 font-mono uppercase tracking-wider ${safeToSpend >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                   {safeToSpend >= 0 ? `+$${safeToSpend.toFixed(2)} after bills` : `-$${Math.abs(safeToSpend).toFixed(2)} short`}
                 </p>
               </>
