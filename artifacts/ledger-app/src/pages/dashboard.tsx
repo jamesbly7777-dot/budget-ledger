@@ -4,12 +4,7 @@ import { computeCategoryTotals, computeIncomeTotals } from "@/lib/firestoreServi
 import { Loader2, TrendingUp, TrendingDown, Activity, ShieldAlert, ShieldCheck, AlertTriangle, CalendarClock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getMonthKey } from "@/lib/rulesEngine";
-import type { Bill } from "@/lib/types";
-
-function isPaidInMonth(bill: Bill, month: string): boolean {
-  if (bill.paidMonths) return bill.paidMonths.includes(month);
-  return bill.isPaid;
-}
+import { isEffectivelyPaidInMonth } from "@/lib/billStatus";
 
 const INCOME_SOURCE_COLORS: Record<string, string> = {
   Payroll: "text-blue-400",
@@ -20,8 +15,15 @@ const INCOME_SOURCE_COLORS: Record<string, string> = {
 };
 
 export default function DashboardPage({ selectedMonth }: { selectedMonth: string }) {
+  const today = new Date();
+  const todayDay = today.getDate();
+  const realCurrentMonth = getMonthKey(today);
+
   const { data: transactions, isLoading: txLoading } = useTransactions(selectedMonth);
   const { data: bills, isLoading: billsLoading } = useBills();
+  // Load current calendar month transactions separately for bill status checks
+  // (selectedMonth may differ from today's month when browsing history)
+  const { data: currentMonthTxs } = useTransactions(realCurrentMonth);
 
   if (txLoading || billsLoading) {
     return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
@@ -39,10 +41,6 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
   const incomeTotals = computeIncomeTotals(txs);
   const incomeSources = Object.entries(incomeTotals).filter(([, amount]) => amount > 0);
 
-  const today = new Date();
-  const todayDay = today.getDate();
-  const realCurrentMonth = getMonthKey(today);
-
   // Use ALL tracked bills for coverage/totals (same bills user sees in Bill Manager)
   const monthlyBills = bills || [];
   const billsTotal = monthlyBills.reduce((sum, b) => sum + b.amount, 0);
@@ -50,9 +48,9 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
   const billsCoverageRate = totalIncome > 0 && billsTotal > 0 ? Math.min((totalIncome / billsTotal) * 100, 999) : null;
   const isCovered = totalIncome >= billsTotal && billsTotal > 0;
 
-  // Show ALL tracked bills as upcoming — every bill the user tracks matters
-  const currentMonthBills = bills || [];
-  const unpaidThisMonth = currentMonthBills.filter((b) => !isPaidInMonth(b, realCurrentMonth));
+  // Upcoming bills: use same paid logic as Bill Manager — manual flag OR matched ledger transaction
+  const liveTxs = currentMonthTxs ?? [];
+  const unpaidThisMonth = (bills ?? []).filter((b) => !isEffectivelyPaidInMonth(b, realCurrentMonth, liveTxs));
   const upcomingBills = unpaidThisMonth
     .map((b) => ({ ...b, daysUntil: b.dueDay >= todayDay ? b.dueDay - todayDay : 32 - todayDay + b.dueDay }))
     .sort((a, b) => a.daysUntil - b.daysUntil)

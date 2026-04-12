@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { TransactionCategory, Transaction, Bill, DEFAULT_EXPENSE_CATEGORIES } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
+import { isPaidInMonth, findLinkedTransaction } from "@/lib/billStatus";
 
 interface SuggestedBill {
   key: string;
@@ -39,31 +40,6 @@ function normalizeName(name: string): string {
     .filter((w) => w.length > 2)
     .slice(0, 4)
     .join(" ");
-}
-
-function isPaidInMonth(bill: Bill, month: string): boolean {
-  if (bill.paidMonths) return bill.paidMonths.includes(month);
-  return bill.isPaid;
-}
-
-function findLinkedTransaction(bill: Bill, transactions: Transaction[]): Transaction | undefined {
-  // Primary: explicit billId stored on the transaction (Bill Manager entries)
-  const byId = transactions.find((tx) => tx.billId === bill.id);
-  if (byId) return byId;
-  // Secondary: fuzzy name match for imported transactions only
-  const billWords = bill.name
-    .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, " ")
-    .split(" ")
-    .filter((w) => w.length >= 4);
-  if (billWords.length === 0) return undefined;
-  return transactions.find((tx) => {
-    if (tx.type === "income") return false;
-    if (tx.note === "Added from Bill Manager") return false;
-    if (tx.billId) return false; // already handled above; don't double-match
-    const txName = tx.name.toLowerCase();
-    return billWords.some((word) => txName.includes(word));
-  });
 }
 
 // Dates are stored as YYYY-MM-DD — extract the day portion (index 2 after splitting on "-")
