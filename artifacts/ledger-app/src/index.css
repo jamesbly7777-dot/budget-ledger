@@ -138,10 +138,10 @@
   body {
     @apply font-sans antialiased text-foreground;
     background-color: hsl(var(--background));
-    /* Subtle tech grid */
+    /* Tech grid */
     background-image:
-      linear-gradient(rgba(56, 155, 255, 0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(56, 155, 255, 0.04) 1px, transparent 1px);
+      linear-gradient(rgba(56, 155, 255, 0.10) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56, 155, 255, 0.10) 1px, transparent 1px);
     background-size: 40px 40px;
     background-attachment: fixed;
   }
