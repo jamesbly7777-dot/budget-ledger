@@ -126,122 +126,111 @@ export function NeuralBrainHero({ income, spending, net, compact }: { income: nu
   }, []);
 
   return (
-    <div
-      className="relative w-full overflow-hidden rounded-2xl mb-6"
-      style={{
-        height: "220px",
-        background: "linear-gradient(180deg, rgba(12,20,40,0.98) 0%, rgba(8,14,32,0.95) 100%)",
-        border: "1px solid rgba(56,189,248,0.15)",
-        boxShadow: "0 0 60px rgba(56,189,248,0.08), 0 8px 32px rgba(0,0,0,0.6)",
-      }}
-    >
-      {/* Neural canvas — base background layer */}
-      <canvas
-        ref={canvasRef}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}
-      />
-
-      {/* Hero image — object-fit cover, tuned position */}
-      <img
-        src="/ledger-hero-brain.png"
-        alt=""
+    <div className="w-full mb-6">
+      {/* ── Brain image card ── */}
+      <div
+        className="relative w-full overflow-hidden rounded-t-2xl"
         style={{
-          position: "absolute", inset: 0, width: "100%", height: "100%",
-          objectFit: "cover", objectPosition: "55% 14%",
-          mixBlendMode: "luminosity", opacity: 0.55,
+          height: "200px",
+          background: "linear-gradient(180deg, rgba(12,20,40,0.98) 0%, rgba(8,14,32,0.95) 100%)",
+          border: "1px solid rgba(0,212,255,0.18)",
+          borderBottom: "none",
+          boxShadow: "0 0 60px rgba(0,212,255,0.08), 0 8px 32px rgba(0,0,0,0.6)",
         }}
-      />
+      >
+        {/* Neural canvas — base background */}
+        <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} />
 
-      {/* Vignette — left/right */}
-      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, rgba(8,14,32,0.82) 0%, transparent 32%, transparent 68%, rgba(8,14,32,0.82) 100%)", zIndex: 2 }} />
-      {/* Vignette — top/bottom */}
-      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(8,14,32,0.55) 0%, transparent 38%, transparent 58%, rgba(8,14,32,0.92) 100%)", zIndex: 2 }} />
+        {/* Brain image — centered on the brain shape */}
+        <img
+          src="/ledger-hero-brain.png"
+          alt=""
+          style={{
+            position: "absolute", inset: 0, width: "100%", height: "100%",
+            objectFit: "cover", objectPosition: "50% 48%",
+            mixBlendMode: "screen", opacity: 0.6,
+          }}
+        />
 
-      {/* Scanlines */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: "repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 3px, rgba(0,0,0,0.04) 4px)", zIndex: 3 }} />
+        {/* Vignette left/right */}
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, rgba(8,14,32,0.88) 0%, transparent 28%, transparent 72%, rgba(8,14,32,0.88) 100%)", zIndex: 2 }} />
+        {/* Vignette top/bottom */}
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(8,14,32,0.4) 0%, transparent 30%, transparent 55%, rgba(8,14,32,0.88) 100%)", zIndex: 2 }} />
+        {/* Scanlines */}
+        <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 3px, rgba(0,0,0,0.04) 4px)", zIndex: 3, pointerEvents: "none" }} />
 
-      {/* Content overlay — title at top, stats at bottom */}
-      <div className="absolute inset-0 flex flex-col items-center justify-between py-5 px-4" style={{ zIndex: 4 }}>
-        {/* Logo */}
-        <div className="text-center select-none">
-          <h1
-            className="font-display font-black uppercase"
-            style={{
-              fontSize: "clamp(1.5rem, 6vw, 2.8rem)",
-              letterSpacing: "0.25em",
-              color: "#ffffff",
-              textShadow: "0 0 40px rgba(0,212,255,0.9), 0 0 80px rgba(0,212,255,0.4)",
-              lineHeight: 1,
-            }}
-          >
-            LEDGER<span style={{ color: "#f97316", textShadow: "0 0 30px rgba(249,115,22,1)" }}>.</span>AI
-          </h1>
-          {!compact && (
-            <p className="font-mono uppercase mt-1" style={{ fontSize: "clamp(0.45rem, 1.8vw, 0.6rem)", letterSpacing: "0.4em", color: "rgba(148,163,184,0.65)" }}>
-              Neural finance core
-            </p>
-          )}
-        </div>
-
-        {/* Analyzing data scan bar */}
-        <div className="w-full px-2">
-          <p className="font-mono uppercase mb-1" style={{ fontSize: "0.55rem", letterSpacing: "0.25em", color: "rgba(0,212,255,0.6)" }}>
-            Analyzing data…
-          </p>
-          <div style={{ height: "2px", background: "rgba(255,255,255,0.08)", borderRadius: "1px", overflow: "hidden" }}>
-            <div className="ledger-hero-scan-fill" style={{ height: "100%", background: "linear-gradient(to right, #00d4ff, #f97316)", borderRadius: "1px" }} />
-          </div>
-        </div>
-
-        {/* Stats row — always at bottom, full width */}
-        <div className="w-full flex items-end justify-center gap-0">
-          <div className="flex-1 text-center">
-            <p className="font-mono uppercase text-emerald-400/70 mb-1" style={{ fontSize: "clamp(0.5rem, 1.5vw, 0.6rem)", letterSpacing: "0.15em" }}>Income</p>
-            <p className="font-mono font-bold text-emerald-400" style={{ fontSize: "clamp(1rem, 3.5vw, 1.25rem)", textShadow: "0 0 16px rgba(52,211,153,0.6)", lineHeight: 1 }}>
-              ${income.toLocaleString("en-US", { maximumFractionDigits: 0 })}
-            </p>
-          </div>
-          <div className="w-px self-stretch bg-white/10 mx-2" style={{ minHeight: "36px" }} />
-          <div className="flex-1 text-center">
-            <p className="font-mono uppercase text-red-400/70 mb-1" style={{ fontSize: "clamp(0.5rem, 1.5vw, 0.6rem)", letterSpacing: "0.15em" }}>Spending</p>
-            <p className="font-mono font-bold text-red-400" style={{ fontSize: "clamp(1rem, 3.5vw, 1.25rem)", textShadow: "0 0 16px rgba(239,68,68,0.6)", lineHeight: 1 }}>
-              ${spending.toLocaleString("en-US", { maximumFractionDigits: 0 })}
-            </p>
-          </div>
-          <div className="w-px self-stretch bg-white/10 mx-2" style={{ minHeight: "36px" }} />
-          <div className="flex-1 text-center">
-            <p className="font-mono uppercase mb-1" style={{ fontSize: "clamp(0.5rem, 1.5vw, 0.6rem)", letterSpacing: "0.15em", color: net >= 0 ? "rgba(52,211,153,0.7)" : "rgba(239,68,68,0.7)" }}>Net</p>
-            <p
-              className="font-mono font-bold"
-              style={{
-                fontSize: "clamp(1rem, 3.5vw, 1.25rem)",
-                color: net >= 0 ? "#34d399" : "#f87171",
-                textShadow: net >= 0 ? "0 0 16px rgba(52,211,153,0.6)" : "0 0 16px rgba(239,68,68,0.6)",
-                lineHeight: 1,
-              }}
+        {/* Content — logo + scan bar only, no stats */}
+        <div className="absolute inset-0 flex flex-col items-center justify-between py-5 px-4" style={{ zIndex: 4 }}>
+          <div className="text-center select-none">
+            <h1
+              className="font-display font-black uppercase"
+              style={{ fontSize: "clamp(1.6rem, 6vw, 2.8rem)", letterSpacing: "0.25em", color: "#ffffff", textShadow: "0 0 40px rgba(0,212,255,0.95), 0 0 80px rgba(0,212,255,0.45)", lineHeight: 1 }}
             >
-              {net >= 0 ? "+" : ""}${Math.abs(net).toLocaleString("en-US", { maximumFractionDigits: 0 })}
-            </p>
+              LEDGER<span style={{ color: "#f97316", textShadow: "0 0 30px rgba(249,115,22,1)" }}>.</span>AI
+            </h1>
+            {!compact && (
+              <p className="font-mono uppercase mt-1" style={{ fontSize: "clamp(0.45rem, 1.8vw, 0.6rem)", letterSpacing: "0.4em", color: "rgba(148,163,184,0.65)" }}>
+                Neural finance core
+              </p>
+            )}
+          </div>
+          {/* Scan bar at the bottom of the brain */}
+          <div className="w-full px-2">
+            <p className="font-mono uppercase mb-1" style={{ fontSize: "0.55rem", letterSpacing: "0.25em", color: "rgba(0,212,255,0.65)" }}>Analyzing data…</p>
+            <div style={{ height: "2px", background: "rgba(255,255,255,0.08)", borderRadius: "1px", overflow: "hidden" }}>
+              <div className="ledger-hero-scan-fill" style={{ height: "100%", background: "linear-gradient(to right, #00d4ff, #f97316)", borderRadius: "1px" }} />
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Corner accents */}
-      <div className="absolute top-3 left-3 pointer-events-none" style={{ zIndex: 4 }}>
-        <div style={{ width: 20, height: 1, background: "rgba(56,189,248,0.6)", position: "absolute" }} />
-        <div style={{ width: 1, height: 20, background: "rgba(56,189,248,0.6)", position: "absolute" }} />
-      </div>
-      <div className="absolute top-3 right-3 pointer-events-none" style={{ zIndex: 4 }}>
-        <div style={{ width: 20, height: 1, background: "rgba(244,114,182,0.6)", position: "absolute", right: 0 }} />
-        <div style={{ width: 1, height: 20, background: "rgba(244,114,182,0.6)", position: "absolute", right: 0 }} />
-      </div>
-      <div className="absolute bottom-3 left-3 pointer-events-none" style={{ zIndex: 4 }}>
-        <div style={{ width: 20, height: 1, background: "rgba(56,189,248,0.35)", position: "absolute", bottom: 0 }} />
-        <div style={{ width: 1, height: 20, background: "rgba(56,189,248,0.35)", position: "absolute", bottom: 0 }} />
-      </div>
-      <div className="absolute bottom-3 right-3 pointer-events-none" style={{ zIndex: 4 }}>
-        <div style={{ width: 20, height: 1, background: "rgba(244,114,182,0.35)", position: "absolute", bottom: 0, right: 0 }} />
-        <div style={{ width: 1, height: 20, background: "rgba(244,114,182,0.35)", position: "absolute", bottom: 0, right: 0 }} />
+        {/* Corner accents */}
+        <div className="absolute top-3 left-3 pointer-events-none" style={{ zIndex: 5 }}>
+          <div style={{ width: 20, height: 1, background: "rgba(0,212,255,0.6)", position: "absolute" }} />
+          <div style={{ width: 1, height: 20, background: "rgba(0,212,255,0.6)", position: "absolute" }} />
+        </div>
+        <div className="absolute top-3 right-3 pointer-events-none" style={{ zIndex: 5 }}>
+          <div style={{ width: 20, height: 1, background: "rgba(249,115,22,0.6)", position: "absolute", right: 0 }} />
+          <div style={{ width: 1, height: 20, background: "rgba(249,115,22,0.6)", position: "absolute", right: 0 }} />
+        </div>
+        <div className="absolute bottom-3 left-3 pointer-events-none" style={{ zIndex: 5 }}>
+          <div style={{ width: 20, height: 1, background: "rgba(0,212,255,0.35)", position: "absolute", bottom: 0 }} />
+          <div style={{ width: 1, height: 20, background: "rgba(0,212,255,0.35)", position: "absolute", bottom: 0 }} />
+        </div>
+        <div className="absolute bottom-3 right-3 pointer-events-none" style={{ zIndex: 5 }}>
+          <div style={{ width: 20, height: 1, background: "rgba(249,115,22,0.35)", position: "absolute", bottom: 0, right: 0 }} />
+          <div style={{ width: 1, height: 20, background: "rgba(249,115,22,0.35)", position: "absolute", bottom: 0, right: 0 }} />
+        </div>
+      </div>{/* end brain card */}
+
+      {/* ── Stats strip — below the brain, clean dark bar ── */}
+      <div
+        className="flex items-center justify-around px-4 py-3 rounded-b-2xl"
+        style={{
+          background: "rgba(8,14,32,0.96)",
+          border: "1px solid rgba(0,212,255,0.18)",
+          borderTop: "1px solid rgba(0,212,255,0.08)",
+        }}
+      >
+        <div className="text-center">
+          <p className="font-mono uppercase text-emerald-400/60 mb-0.5" style={{ fontSize: "0.55rem", letterSpacing: "0.15em" }}>Income</p>
+          <p className="font-mono font-bold text-emerald-400" style={{ fontSize: "clamp(0.9rem, 3vw, 1.15rem)", textShadow: "0 0 14px rgba(52,211,153,0.6)", lineHeight: 1 }}>
+            ${income.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+          </p>
+        </div>
+        <div className="w-px self-stretch bg-white/8 mx-2" />
+        <div className="text-center">
+          <p className="font-mono uppercase text-red-400/60 mb-0.5" style={{ fontSize: "0.55rem", letterSpacing: "0.15em" }}>Spending</p>
+          <p className="font-mono font-bold text-red-400" style={{ fontSize: "clamp(0.9rem, 3vw, 1.15rem)", textShadow: "0 0 14px rgba(239,68,68,0.6)", lineHeight: 1 }}>
+            ${spending.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+          </p>
+        </div>
+        <div className="w-px self-stretch bg-white/8 mx-2" />
+        <div className="text-center">
+          <p className="font-mono uppercase mb-0.5" style={{ fontSize: "0.55rem", letterSpacing: "0.15em", color: net >= 0 ? "rgba(52,211,153,0.6)" : "rgba(239,68,68,0.6)" }}>Net</p>
+          <p className="font-mono font-bold" style={{ fontSize: "clamp(0.9rem, 3vw, 1.15rem)", color: net >= 0 ? "#34d399" : "#f87171", textShadow: net >= 0 ? "0 0 14px rgba(52,211,153,0.6)" : "0 0 14px rgba(239,68,68,0.6)", lineHeight: 1 }}>
+            {net >= 0 ? "+" : ""}${Math.abs(net).toLocaleString("en-US", { maximumFractionDigits: 0 })}
+          </p>
+        </div>
       </div>
     </div>
   );
