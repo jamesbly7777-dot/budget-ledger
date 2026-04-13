@@ -135,17 +135,33 @@ export function NeuralBrainHero({ income, spending, net, compact }: { income: nu
         boxShadow: "0 0 60px rgba(56,189,248,0.08), 0 8px 32px rgba(0,0,0,0.6)",
       }}
     >
-      {/* Scanlines */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: "repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 3px, rgba(0,0,0,0.04) 4px)", zIndex: 2 }} />
-
-      {/* Neural canvas — fills container as background */}
+      {/* Neural canvas — base background layer */}
       <canvas
         ref={canvasRef}
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}
       />
 
+      {/* Hero image — object-fit cover, tuned position */}
+      <img
+        src="/ledger-hero-brain.png"
+        alt=""
+        style={{
+          position: "absolute", inset: 0, width: "100%", height: "100%",
+          objectFit: "cover", objectPosition: "55% 14%",
+          mixBlendMode: "luminosity", opacity: 0.55,
+        }}
+      />
+
+      {/* Vignette — left/right */}
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, rgba(8,14,32,0.82) 0%, transparent 32%, transparent 68%, rgba(8,14,32,0.82) 100%)", zIndex: 2 }} />
+      {/* Vignette — top/bottom */}
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(8,14,32,0.55) 0%, transparent 38%, transparent 58%, rgba(8,14,32,0.92) 100%)", zIndex: 2 }} />
+
+      {/* Scanlines */}
+      <div className="absolute inset-0 pointer-events-none" style={{ background: "repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 3px, rgba(0,0,0,0.04) 4px)", zIndex: 3 }} />
+
       {/* Content overlay — title at top, stats at bottom */}
-      <div className="absolute inset-0 flex flex-col items-center justify-between py-5 px-4" style={{ zIndex: 3 }}>
+      <div className="absolute inset-0 flex flex-col items-center justify-between py-5 px-4" style={{ zIndex: 4 }}>
         {/* Logo */}
         <div className="text-center select-none">
           <h1
