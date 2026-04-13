@@ -1,0 +1,43 @@
+hecking how this project is set up for Replit so we can give accurate copy/paste steps.
+
+Here’s what actually matters for Replit with this project—there isn’t one giant block to paste for “the UI”; you wire env + how you run the app.
+
+1. Prefer Git, not copy/paste
+Connect Replit to your repo and pull (or use Replit’s GitHub import).
+Pasting files by hand is error-prone and easy to miss folders (public, src, config).
+2. Secrets to add in Replit (paste as Secrets or a .env Replit loads for Vite)
+From the Firebase console (Project settings → Your apps), add one secret per line (names must match exactly):
+
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+VITE_FIREBASE_MEASUREMENT_ID=...
+measurementId can be omitted in some projects; if you don’t use Analytics, you can still set it to an empty string or remove usage in code—right now the app expects it in config.
+
+3. Vars your vite.config.ts expects in dev
+Your Vite config requires these when not building:
+
+PORT=3000
+BASE_PATH=/
+(Replit usually injects PORT; if the dev server errors about PORT or BASE_PATH, set them in Secrets or in a .replit [env] section.)
+
+Optional if you run a local API:
+
+API_SERVER_PORT=8080
+4. Monorepo gotcha
+ledger-app/package.json lists @workspace/api-client-react as workspace:*. That only works if the parent monorepo is present and npm install / pnpm install resolves workspaces. If Replit only has the ledger-app folder and install fails, you either:
+
+deploy from the repo root with workspaces, or
+remove/replace that workspace dependency if nothing in src uses it (worth confirming in your tree).
+5. Run command (typical)
+After install, something like:
+
+npm install
+npm run dev
+(Exact path depends on whether Replit’s root is the monorepo or ledger-app.)
+
+Short answer: For Replit, paste your Firebase VITE_* values and PORT / BASE_PATH into Secrets; sync the code with Git instead of pasting the whole UI. If you tell me whether your Replit repl root is ledger-app only or the full repo, I can give the exact run line and env block for a .replit file.
+
