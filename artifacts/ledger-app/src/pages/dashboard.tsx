@@ -20,20 +20,6 @@ function billsForMonth(allBills: any[], monthKey: string): any[] {
   return allBills.filter((b) => b.isRecurring || !b.month || b.month === monthKey);
 }
 
-// Detect bills that look like raw bank transaction strings (too long / contain "authorized on" etc.)
-// These are auto-detected junk entries that should be cleaned up but we shouldn't show them in upcoming.
-function looksLikeBankString(name: string): boolean {
-  if (!name) return false;
-  const lower = name.toLowerCase();
-  return (
-    lower.includes("purchase authorized") ||
-    lower.includes("card 0") ||
-    lower.includes("ach payment") ||
-    lower.includes("direct deposit") ||
-    lower.includes("online payment") ||
-    name.length > 60
-  );
-}
 
 export default function DashboardPage({ selectedMonth }: { selectedMonth: string }) {
   const today = new Date();
@@ -65,13 +51,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
 
   // Only bills that apply to monthKey — same set as Bill Manager shows for this month.
   const monthBills = billsForMonth(bills ?? [], monthKey);
-
-  // Filter out raw bank transaction strings that were auto-detected as bills.
-  // They inflate the total and show garbage in the upcoming list.
-  const cleanMonthBills = monthBills.filter((b) => !looksLikeBankString(b.name));
-
-  // Coverage and safe-to-spend only count real (clean-named) bills.
-  const billsTotal = cleanMonthBills.reduce((sum, b) => sum + b.amount, 0);
+  const billsTotal = monthBills.reduce((sum, b) => sum + b.amount, 0);
   const safeToSpend = totalIncome - billsTotal;
   const billsCoverageRate = totalIncome > 0 && billsTotal > 0 ? Math.min((totalIncome / billsTotal) * 100, 100) : null;
   const isCovered = totalIncome >= billsTotal && billsTotal > 0;
@@ -82,7 +62,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
   // Upcoming / unpaid bills — only meaningful for the current month.
   // Past months can't have "upcoming" bills — everything is either paid or was missed.
   const unpaidThisMonth = isCurrentMonth
-    ? cleanMonthBills.filter((b) => !isEffectivelyPaidInMonth(b, monthKey, txs))
+    ? monthBills.filter((b) => !isEffectivelyPaidInMonth(b, monthKey, txs))
     : [];
   const upcomingBills = unpaidThisMonth
     .map((b) => ({ ...b, daysUntil: b.dueDay >= todayDay ? b.dueDay - todayDay : -(todayDay - b.dueDay) }))
@@ -287,7 +267,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
                 <p className="text-xl font-bold font-mono text-emerald-400 mt-1">${totalIncome.toFixed(2)}</p>
               </div>
               <div>
-                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Bills ({cleanMonthBills.length})</p>
+                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Bills ({monthBills.length})</p>
                 <p className="text-xl font-bold font-mono text-blue-400 mt-1">${billsTotal.toFixed(2)}</p>
               </div>
               <div>
@@ -311,7 +291,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
             </div>
             <p className="text-xs font-mono text-muted-foreground mt-2">
               {isCovered
-                ? `Income covers all ${cleanMonthBills.length} bills with $${safeToSpend.toFixed(2)} left for discretionary spending.`
+                ? `Income covers all ${monthBills.length} bills with $${safeToSpend.toFixed(2)} left for discretionary spending.`
                 : `Income is $${Math.abs(safeToSpend).toFixed(2)} short of covering all bills this month.`}
             </p>
           </CardContent>
