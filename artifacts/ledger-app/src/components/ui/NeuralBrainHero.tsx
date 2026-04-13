@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-export function NeuralBrainHero({ income, spending, net }: { income: number; spending: number; net: number }) {
+export function NeuralBrainHero({ income, spending, net, compact }: { income: number; spending: number; net: number; compact?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
 
@@ -154,15 +154,27 @@ export function NeuralBrainHero({ income, spending, net }: { income: number; spe
               fontSize: "clamp(1.5rem, 6vw, 2.8rem)",
               letterSpacing: "0.25em",
               color: "#ffffff",
-              textShadow: "0 0 40px rgba(56,189,248,0.9), 0 0 80px rgba(56,189,248,0.4)",
+              textShadow: "0 0 40px rgba(0,212,255,0.9), 0 0 80px rgba(0,212,255,0.4)",
               lineHeight: 1,
             }}
           >
             LEDGER<span style={{ color: "#f97316", textShadow: "0 0 30px rgba(249,115,22,1)" }}>.</span>AI
           </h1>
-          <p className="font-mono uppercase mt-1" style={{ fontSize: "clamp(0.45rem, 1.8vw, 0.6rem)", letterSpacing: "0.4em", color: "rgba(148,163,184,0.65)" }}>
-            Neural Financial Intelligence
+          {!compact && (
+            <p className="font-mono uppercase mt-1" style={{ fontSize: "clamp(0.45rem, 1.8vw, 0.6rem)", letterSpacing: "0.4em", color: "rgba(148,163,184,0.65)" }}>
+              Neural finance core
+            </p>
+          )}
+        </div>
+
+        {/* Analyzing data scan bar */}
+        <div className="w-full px-2">
+          <p className="font-mono uppercase mb-1" style={{ fontSize: "0.55rem", letterSpacing: "0.25em", color: "rgba(0,212,255,0.6)" }}>
+            Analyzing data…
           </p>
+          <div style={{ height: "2px", background: "rgba(255,255,255,0.08)", borderRadius: "1px", overflow: "hidden" }}>
+            <div className="ledger-hero-scan-fill" style={{ height: "100%", background: "linear-gradient(to right, #00d4ff, #f97316)", borderRadius: "1px" }} />
+          </div>
         </div>
 
         {/* Stats row — always at bottom, full width */}

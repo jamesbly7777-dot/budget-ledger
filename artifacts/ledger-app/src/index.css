@@ -345,3 +345,11 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted));
 }
+
+@keyframes ledger-hero-scan {
+  from { width: 0% }
+  to   { width: 100% }
+}
+.ledger-hero-scan-fill {
+  animation: ledger-hero-scan 2.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}

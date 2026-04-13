@@ -1,0 +1,26 @@
+Dependency / workspace (pnpm)
+pnpm-workspace.yaml (new): packages: ["."] and a catalog map so all catalog: devDependencies in package.json resolve (Replit/monorepo-style catalog: entries).
+package.json: Removed @workspace/api-client-react": "workspace:*" (not present in this standalone tree; nothing in src/ imported it).
+Environment
+.env (new/updated): VITE_FIREBASE_* keys for src/lib/firebase.ts (apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId, measurementId). You fill values; don’t commit secrets if the Repl is public.
+Vite / local dev
+vite.config.ts: Removed throws that required PORT and BASE_PATH for dev; defaults are PORT → 5173 and BASE_PATH → /. Removed unused isBuild.
+TypeScript
+tsconfig.json: Replaced extends: ../../tsconfig.base.json and references to ../../lib/api-client-react with a self-contained config so the artifact runs without parent monorepo files.
+Theme / UI — global
+src/index.css: Added @keyframes ledger-hero-scan and .ledger-hero-scan-fill for the hero “Analyzing data…” bar animation. (Global --secondary was briefly changed then reverted so non-button bg-secondary usage stayed sane.)
+src/components/ui/button.tsx: default variant → stronger cyan / #00d4ff neon border + glow; secondary variant → orange / #ff8c00 neon border + glow (Fix Recurring style).
+Theme / UI — components
+src/components/CyberHero.tsx: Hero now uses /ledger-hero-brain.png (reference mock) with object-fit: cover and object-position: 55% 14%; vignette overlays; “Analyzing data…” strip with cyan → orange animated fill; optional subtitle “Neural finance core” when not compact. (Earlier SVG-brain / side-by-side versions were replaced by this.)
+src/components/ui/badge.tsx: New variants glowOrange, glowCyan, glowRed for mock-style status pills (optional; not wired everywhere).
+src/components/layout/AppShell.tsx: Minor: text-white on the Fix Recurring header button link for contrast on orange.
+Static asset
+public/ledger-hero-brain.png (new): Copy of your reference dashboard PNG used as the hero image (crop/zoom is tuned in CyberHero.tsx via HERO_OBJECT_POSITION).
+What to tell Replit to mirror
+Add pnpm-workspace.yaml + catalog (or replace catalog: deps with pinned versions in package.json).
+Drop workspace:* deps that don’t exist in the Repl.
+vite.config: don’t hard-require PORT/BASE_PATH for local preview or set those env vars in Replit.
+Standalone tsconfig.json if the Repl doesn’t have ../../tsconfig.base.json / ../../lib/....
+Merge CSS + CyberHero + Button + Badge + AppShell edits above.
+Upload the same PNG as public/ledger-hero-brain.png (or adjust path in CyberHero.tsx).
+If you want this as a single “Replit checklist” bullet list only, you can trim the explanatory sentences and keep the file paths.
