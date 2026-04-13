@@ -45,7 +45,8 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
   const monthlyBills = bills || [];
   const billsTotal = monthlyBills.reduce((sum, b) => sum + b.amount, 0);
   const safeToSpend = totalIncome - billsTotal;
-  const billsCoverageRate = totalIncome > 0 && billsTotal > 0 ? Math.min((totalIncome / billsTotal) * 100, 999) : null;
+  // Coverage: what % of bills income can cover, capped at 100% (100 = fully covered)
+  const billsCoverageRate = totalIncome > 0 && billsTotal > 0 ? Math.min((totalIncome / billsTotal) * 100, 100) : null;
   const isCovered = totalIncome >= billsTotal && billsTotal > 0;
 
   // Upcoming bills: use same paid logic as Bill Manager — manual flag OR matched ledger transaction

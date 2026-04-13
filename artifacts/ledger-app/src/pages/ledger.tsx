@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TransactionStatus, Transaction, DEFAULT_EXPENSE_CATEGORIES } from "@/lib/types";
+import { TransactionStatus, Transaction, DEFAULT_EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/types";
 import { exportToCSV } from "@/lib/csvParser";
 
 const BASE_CATEGORY_COLORS: Record<string, string> = {
@@ -41,6 +41,8 @@ const BLANK_FORM = {
   category: "Uncategorized",
   status: "cleared" as TransactionStatus,
   note: "",
+  type: "expense" as "expense" | "income",
+  incomeCategory: "Other Income" as string,
 };
 
 // ─── Split Dialog ─────────────────────────────────────────────────────────────
@@ -249,11 +251,15 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
       date: formData.date,
       name: formData.name,
       amount: Math.abs(parseFloat(formData.amount)),
-      category: formData.category,
+      category: formData.type === "income" ? "Income" : formData.category,
       status: formData.status,
       month: selectedMonth,
+      type: formData.type,
     };
     if (formData.note.trim()) payload.note = formData.note.trim();
+    if (formData.type === "income") {
+      payload.incomeCategory = formData.incomeCategory || "Other Income";
+    }
     if (editingId) {
       updateTx.mutate({ id: editingId, data: payload });
     } else {
@@ -276,6 +282,8 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
       category: tx.category,
       status: tx.status,
       note: tx.note ?? "",
+      type: tx.type ?? "expense",
+      incomeCategory: tx.incomeCategory ?? "Other Income",
     });
     setEditingId(tx.id);
     setIsDialogOpen(true);
@@ -378,18 +386,48 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                 </DialogTitle>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                {/* Expense / Income toggle */}
+                <div className="grid gap-2">
+                  <Label className="font-mono text-xs uppercase text-muted-foreground">Type</Label>
+                  <div className="grid grid-cols-2 gap-1 p-1 rounded-md" style={{ background: "rgba(56,155,255,0.06)", border: "1px solid rgba(56,155,255,0.15)" }}>
+                    {(["expense", "income"] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, type: t })}
+                        className={`py-1.5 rounded text-xs font-mono uppercase tracking-wider transition-all ${formData.type === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                        style={formData.type === t ? { boxShadow: "0 0 12px rgba(56,155,255,0.4)" } : {}}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="grid gap-2">
                   <Label className="font-mono text-xs uppercase text-muted-foreground">Date</Label>
                   <Input type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} className="font-mono bg-input border-border" />
                 </div>
                 <div className="grid gap-2">
-                  <Label className="font-mono text-xs uppercase text-muted-foreground">Name</Label>
+                  <Label className="font-mono text-xs uppercase text-muted-foreground">Description</Label>
                   <Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="font-mono bg-input border-border" />
                 </div>
                 <div className="grid gap-2">
                   <Label className="font-mono text-xs uppercase text-muted-foreground">Amount</Label>
                   <Input type="number" step="0.01" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} className="font-mono bg-input border-border" />
                 </div>
+                {formData.type === "income" ? (
+                  <div className="grid gap-2">
+                    <Label className="font-mono text-xs uppercase text-muted-foreground">Income Source</Label>
+                    <Select value={formData.incomeCategory} onValueChange={(v) => setFormData({ ...formData, incomeCategory: v })}>
+                      <SelectTrigger className="font-mono bg-input border-border"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {INCOME_CATEGORIES.map((c) => (
+                          <SelectItem key={c} value={c} className="font-mono">{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
                 <div className="grid gap-2">
                   <Label className="font-mono text-xs uppercase text-muted-foreground">Category</Label>
                   <CategorySelect
@@ -399,6 +437,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                     onAdd={handleAddCategory}
                   />
                 </div>
+                )}
                 <div className="grid gap-2">
                   <Label className="font-mono text-xs uppercase text-muted-foreground">Status</Label>
                   <Select value={formData.status} onValueChange={(v: any) => setFormData({ ...formData, status: v })}>
