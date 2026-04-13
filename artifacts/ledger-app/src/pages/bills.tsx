@@ -513,12 +513,12 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       }
       // 2. Delete ALL Bill Manager entries for this bill in this month (handles duplicates)
       await firestoreService.deleteAllBillManagerEntriesForBill(user!.uid, selectedMonth, bill.id);
-      // 3. If linked via a Bill Manager-created transaction (has billId), delete it.
-      //    Imported CSV transactions (no billId) stay in the ledger untouched.
-      if (linkedTx && linkedTx.billId) {
+      // 3. Delete the linked ledger transaction (whether imported or Bill-Manager-created)
+      //    so findLinkedTransaction no longer finds it and the bill shows as unpaid.
+      if (linkedTx) {
         await firestoreService.deleteTransaction(user!.uid, linkedTx.id);
       }
-      toast({ description: `${bill.name} marked unpaid.` });
+      toast({ description: `${bill.name} marked unpaid.${linkedTx ? " Linked ledger entry removed." : ""}` });
     } else {
       // Marking paid
       if (bill.isRecurring) {
