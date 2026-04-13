@@ -174,7 +174,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-mono text-sm truncate">{bill.name}</p>
+                      <p className="font-mono text-sm truncate" title={bill.name}>{bill.name}</p>
                       <p className={`text-xs font-mono ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : isDueSoon ? "text-orange-400" : "text-muted-foreground"}`}>
                         {isOverdue ? `${todayDay - bill.dueDay}d overdue` : isDueToday ? "Due today" : `Due in ${bill.daysUntil}d`}
                       </p>

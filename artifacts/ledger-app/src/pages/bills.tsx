@@ -294,7 +294,7 @@ function BillRow({ bill, compact = false, selectedMonth, todayDay, ledgerLinked,
         <span className={`font-mono text-xs font-bold block ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-primary"}`}>{formattedDate}</span>
       </div>
       <div className="flex-1 min-w-0">
-        <p className={`font-mono text-sm truncate ${paid ? "line-through text-muted-foreground" : ""}`}>{bill.name}</p>
+        <p className={`font-mono text-sm truncate ${paid ? "line-through text-muted-foreground" : ""}`} title={bill.name}>{bill.name}</p>
         {!compact && (
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className="text-[10px] text-muted-foreground font-mono uppercase">{bill.category}</span>
