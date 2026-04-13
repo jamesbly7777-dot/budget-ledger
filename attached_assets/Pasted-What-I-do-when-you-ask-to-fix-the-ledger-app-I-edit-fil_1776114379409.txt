@@ -1,0 +1,28 @@
+What I do when you ask to fix the ledger app
+I edit files in the project folder that Cursor has open — on your machine, under paths like c:\Users\janise\Documents\ledger app\artifacts\ledger-app\.... Those are normal files on disk; saving is the same as you editing them in the editor.
+I do not automatically change GitHub. GitHub only updates when you (or your CI) commit and push from that folder. Until then, the remote repo still has whatever was last pushed.
+I do not deploy for you unless we run deploy commands and your environment is set up. Replit / Firebase Hosting / etc. only get new code when you deploy or when your host rebuilds from a pushed commit.
+So: fixes live locally first → you commit + push if you want GitHub and hosted apps to match.
+
+Will you see changes in the PWA after a hard refresh?
+Only if the URL the PWA opens is serving your new build.
+
+A PWA is basically your site + a manifest + (often) a service worker. It still loads from your deployed URL (e.g. Replit, Firebase).
+Hard refresh can load newer HTML/JS if the server already has the new files. It does not build or deploy anything by itself.
+Typical flow: change code locally → build (npm run build or your host’s build) → deploy → then refresh (sometimes twice) or clear cache / update the service worker so the new assets load.
+If you only changed files on your laptop and never deployed, the live PWA will not show those changes until you deploy (or run the app locally and point the PWA at localhost, which people usually don’t do for a “downloaded” install).
+
+Summary: I change local workspace files on your computer. GitHub and your live PWA update only after you push and deploy (and the PWA may need a refresh or cache clear to pick up the new version).
+
+so when i tell replit the ai i used to create my ledger app you made these changes then it republishes my app does that mean i see your changes you made?
+
+Sometimes yes, sometimes no — it depends how the code gets to Replit.
+
+You will see what I changed in Cursor when:
+Those edits are in the project Replit actually builds and publishes — e.g. you pushed them to the Git repo Replit uses, then Replit pulled and redeployed, or you copied/synced the same files into Replit so they match.
+Then republish = new build from that code → your live app (and PWA) can show those changes after refresh/cache update.
+
+You might not see my exact changes when:
+The updates only exist on your PC in Cursor and never got to Replit (no push, no upload, no sync).
+You only described the work to Replit’s AI and it rewrote things — that’s new code, not necessarily the same as my edits.
+Rule of thumb: Republish shows whatever code is on Replit at publish time. To be sure my Cursor changes are live, that code has to be the same files Replit is building — usually via git push → Replit pulls → publish.
