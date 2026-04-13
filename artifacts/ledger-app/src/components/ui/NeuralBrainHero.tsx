@@ -141,16 +141,16 @@ export function NeuralBrainHero({ income, spending, net, compact }: { income: nu
         {/* Neural canvas — base background */}
         <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} />
 
-        {/* Brain image — centered on the brain shape */}
-        <img
-          src="/ledger-hero-brain.png"
-          alt=""
-          style={{
-            position: "absolute", inset: 0, width: "100%", height: "100%",
-            objectFit: "cover", objectPosition: "50% 48%",
-            mixBlendMode: "screen", opacity: 0.6,
-          }}
-        />
+        {/* Brain image — zoomed in on just the brain, sidebar/bill text cropped out */}
+        <div style={{
+          position: "absolute", inset: 0,
+          backgroundImage: "url('/ledger-hero-brain.png')",
+          backgroundSize: "260%",
+          backgroundPosition: "52% 18%",
+          backgroundRepeat: "no-repeat",
+          mixBlendMode: "screen",
+          opacity: 0.65,
+        }} />
 
         {/* Vignette left/right */}
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, rgba(8,14,32,0.88) 0%, transparent 28%, transparent 72%, rgba(8,14,32,0.88) 100%)", zIndex: 2 }} />
