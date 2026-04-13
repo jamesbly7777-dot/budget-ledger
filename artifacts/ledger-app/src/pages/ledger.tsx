@@ -473,7 +473,63 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
       </div>
 
       <Card className="border-border">
-        <div className="overflow-x-auto">
+        {/* ── Mobile card list (phones) ── */}
+        <div className="md:hidden">
+          {filtered.length === 0 ? (
+            <div className="px-4 py-8 text-center font-mono">
+              <p className="text-muted-foreground">No transactions for this month.</p>
+              {months && months.length > 0 && (
+                <p className="text-xs text-muted-foreground/60 mt-1">
+                  Data available in: {months.sort((a, b) => b.month.localeCompare(a.month)).map((m) => m.month).join(", ")} — use the month picker above.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="divide-y divide-border/50">
+              {filtered.map((tx) => {
+                const isIncome = tx.type === "income";
+                return (
+                  <div key={tx.id} className="px-4 py-3 hover:bg-muted/10 transition-colors">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate" title={tx.name}>{tx.name}</p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="font-mono text-xs text-muted-foreground">{tx.date}</span>
+                          <Badge variant="outline" className={`font-mono text-[10px] uppercase border ${getCategoryColor(tx.category)}`}>
+                            {tx.category}
+                          </Badge>
+                          {tx.status !== "cleared" && (
+                            <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase ${tx.status === "pending" ? "badge-pending" : "badge-review"}`}>{tx.status}</span>
+                          )}
+                        </div>
+                        {tx.note && <p className="text-[10px] font-mono text-muted-foreground/70 truncate mt-0.5">{tx.note}</p>}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className={`font-mono font-bold text-base ${isIncome ? "text-emerald-400" : ""}`}>
+                          {isIncome ? "+" : ""}${tx.amount.toFixed(2)}
+                        </p>
+                        <div className="flex items-center justify-end gap-1 mt-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" title="Split" onClick={() => setSplitTx(tx)}>
+                            <Scissors className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={() => openEdit(tx)}>
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteTx.mutate({ id: tx.id, month: tx.month })}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop table ── */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-muted-foreground uppercase bg-card border-b border-border font-mono tracking-wider">
               <tr>
@@ -504,7 +560,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                   <tr key={tx.id} className="border-b border-border/50 hover:bg-muted/10 transition-colors">
                     <td className="px-4 py-3 font-mono text-muted-foreground whitespace-nowrap">{tx.date}</td>
                     <td className="px-4 py-3 font-medium max-w-[200px]">
-                      <p className="truncate">{tx.name}</p>
+                      <p className="truncate" title={tx.name}>{tx.name}</p>
                       {tx.note && <p className="text-[10px] font-mono text-muted-foreground/70 truncate mt-0.5">{tx.note}</p>}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -519,11 +575,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                       )}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <Button
-                        variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary"
-                        title="Split transaction"
-                        onClick={() => setSplitTx(tx)}
-                      >
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" title="Split transaction" onClick={() => setSplitTx(tx)}>
                         <Scissors className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => openEdit(tx)}>

@@ -764,16 +764,15 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold font-mono tracking-tight uppercase">Bill Manager</h2>
-          <p className="text-muted-foreground font-mono text-sm mt-1">
-            <span className="text-primary">{selectedMonth}</span>
-            {" · "}
-            Paid: <span className="text-green-400">${paidAmount.toFixed(2)}</span>
-            {" · "}
-            Remaining: <span className="text-red-400">${remaining.toFixed(2)}</span>
-            {" · "}
-            Total: <span className="text-primary">${totalAmount.toFixed(2)}</span>
-          </p>
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-xl font-bold font-mono tracking-tight uppercase">Bill Manager</h2>
+            <span className="text-primary font-mono text-xs">{selectedMonth}</span>
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+            <span className="font-mono text-xs text-muted-foreground">Paid: <span className="text-green-400 font-bold">${paidAmount.toFixed(2)}</span></span>
+            <span className="font-mono text-xs text-muted-foreground">Left: <span className="text-red-400 font-bold">${remaining.toFixed(2)}</span></span>
+            <span className="font-mono text-xs text-muted-foreground">Total: <span className="text-primary font-bold">${totalAmount.toFixed(2)}</span></span>
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="secondary" onClick={openPaycheckSetup} className="font-mono text-xs uppercase tracking-wider">
