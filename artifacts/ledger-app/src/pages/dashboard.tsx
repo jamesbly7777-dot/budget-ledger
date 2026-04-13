@@ -14,16 +14,23 @@ const INCOME_SOURCE_COLORS: Record<string, string> = {
   "Other Income": "text-emerald-300",
 };
 
+// Bills that apply to a given month — same logic as Bill Manager:
+// recurring bills show every month; month-specific bills only show for their month (or bills with no month assigned).
+function billsForMonth(allBills: any[], monthKey: string): any[] {
+  return allBills.filter((b) => b.isRecurring || !b.month || b.month === monthKey);
+}
+
 export default function DashboardPage({ selectedMonth }: { selectedMonth: string }) {
   const today = new Date();
   const todayDay = today.getDate();
-  const realCurrentMonth = getMonthKey(today);
 
-  const { data: transactions, isLoading: txLoading } = useTransactions(selectedMonth);
+  // Single source of truth for which month this Overview shows.
+  // selectedMonth may be "" briefly on first render — fall back to today.
+  const monthKey = selectedMonth || getMonthKey(today);
+
+  // ONE transaction stream for this month — used for both stats AND paid/unpaid checks.
+  const { data: transactions, isLoading: txLoading } = useTransactions(monthKey);
   const { data: bills, isLoading: billsLoading } = useBills();
-  // Load current calendar month transactions separately for bill status checks
-  // (selectedMonth may differ from today's month when browsing history)
-  const { data: currentMonthTxs } = useTransactions(realCurrentMonth);
 
   if (txLoading || billsLoading) {
     return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
@@ -41,17 +48,16 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
   const incomeTotals = computeIncomeTotals(txs);
   const incomeSources = Object.entries(incomeTotals).filter(([, amount]) => amount > 0);
 
-  // Use ALL tracked bills for coverage/totals (same bills user sees in Bill Manager)
-  const monthlyBills = bills || [];
-  const billsTotal = monthlyBills.reduce((sum, b) => sum + b.amount, 0);
+  // Only bills that apply to monthKey — same set as Bill Manager shows for this month.
+  const monthBills = billsForMonth(bills ?? [], monthKey);
+  const billsTotal = monthBills.reduce((sum, b) => sum + b.amount, 0);
   const safeToSpend = totalIncome - billsTotal;
-  // Coverage: what % of bills income can cover, capped at 100% (100 = fully covered)
+  // Coverage: capped at 100% — 100 means income fully covers all bills for this month.
   const billsCoverageRate = totalIncome > 0 && billsTotal > 0 ? Math.min((totalIncome / billsTotal) * 100, 100) : null;
   const isCovered = totalIncome >= billsTotal && billsTotal > 0;
 
-  // Upcoming bills: use same paid logic as Bill Manager — manual flag OR matched ledger transaction
-  const liveTxs = currentMonthTxs ?? [];
-  const unpaidThisMonth = (bills ?? []).filter((b) => !isEffectivelyPaidInMonth(b, realCurrentMonth, liveTxs));
+  // Upcoming / unpaid bills for monthKey, using the same txs stream for ledger matching.
+  const unpaidThisMonth = monthBills.filter((b) => !isEffectivelyPaidInMonth(b, monthKey, txs));
   const upcomingBills = unpaidThisMonth
     .map((b) => ({ ...b, daysUntil: b.dueDay >= todayDay ? b.dueDay - todayDay : 32 - todayDay + b.dueDay }))
     .sort((a, b) => a.daysUntil - b.daysUntil)
@@ -105,7 +111,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
           </CardContent>
         </Card>
 
-        <Card className={billsTotal === 0 ? "" : isCovered ? "" : ""} style={{ borderColor: billsTotal === 0 ? "rgba(56,155,255,0.18)" : isCovered ? "rgba(52,211,153,0.35)" : "rgba(239,68,68,0.35)", boxShadow: billsTotal === 0 ? "0 0 0 1px rgba(56,155,255,0.06), inset 0 1px 0 rgba(56,155,255,0.10), 0 4px 24px rgba(0,0,0,0.4)" : isCovered ? "0 0 0 1px rgba(52,211,153,0.08), inset 0 1px 0 rgba(52,211,153,0.15), 0 0 32px rgba(52,211,153,0.10), 0 4px 24px rgba(0,0,0,0.4)" : "0 0 0 1px rgba(239,68,68,0.08), inset 0 1px 0 rgba(239,68,68,0.15), 0 0 32px rgba(239,68,68,0.10), 0 4px 24px rgba(0,0,0,0.4)" }}>
+        <Card style={{ borderColor: billsTotal === 0 ? "rgba(56,155,255,0.18)" : isCovered ? "rgba(52,211,153,0.35)" : "rgba(239,68,68,0.35)", boxShadow: billsTotal === 0 ? "0 0 0 1px rgba(56,155,255,0.06), inset 0 1px 0 rgba(56,155,255,0.10), 0 4px 24px rgba(0,0,0,0.4)" : isCovered ? "0 0 0 1px rgba(52,211,153,0.08), inset 0 1px 0 rgba(52,211,153,0.15), 0 0 32px rgba(52,211,153,0.10), 0 4px 24px rgba(0,0,0,0.4)" : "0 0 0 1px rgba(239,68,68,0.08), inset 0 1px 0 rgba(239,68,68,0.15), 0 0 32px rgba(239,68,68,0.10), 0 4px 24px rgba(0,0,0,0.4)" }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Bill Coverage</CardTitle>
             {billsTotal === 0 ? <ShieldAlert className="h-4 w-4 text-muted-foreground" /> : isCovered ? <ShieldCheck className="h-4 w-4 text-green-400" /> : <ShieldAlert className="h-4 w-4 text-red-400" />}
@@ -148,7 +154,8 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
                 const isOverdue = bill.dueDay < todayDay;
                 const isDueToday = bill.dueDay === todayDay;
                 const isDueSoon = bill.daysUntil <= 3 && !isOverdue;
-                const dueDateObj = new Date(today.getFullYear(), today.getMonth(), bill.dueDay);
+                const [selYear, selMonth] = monthKey.split("-").map(Number);
+                const dueDateObj = new Date(selYear, selMonth - 1, bill.dueDay);
                 const formattedDate = dueDateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
                 return (
                   <div key={bill.id} className={`flex items-center gap-3 px-6 py-3 ${isOverdue ? "bg-red-500/5" : isDueToday ? "bg-yellow-500/5" : ""}`}>
@@ -165,7 +172,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
                     </div>
                     <span className="font-mono font-bold text-sm">${bill.amount.toFixed(2)}</span>
                     {(isOverdue || isDueToday) && (
-                      <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${isOverdue ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"}`}>
+                      <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${isOverdue ? "badge-due" : "badge-pending"}`}>
                         {isOverdue ? "OVERDUE" : "TODAY"}
                       </span>
                     )}
@@ -245,7 +252,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
       {billsTotal > 0 && (
         <Card className="border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="font-mono uppercase tracking-wider text-sm">Income vs Bills — {selectedMonth}</CardTitle>
+            <CardTitle className="font-mono uppercase tracking-wider text-sm">Income vs Bills — {monthKey}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -254,7 +261,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
                 <p className="text-xl font-bold font-mono text-emerald-400 mt-1">${totalIncome.toFixed(2)}</p>
               </div>
               <div>
-                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Bills Total</p>
+                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Bills ({monthBills.length})</p>
                 <p className="text-xl font-bold font-mono text-blue-400 mt-1">${billsTotal.toFixed(2)}</p>
               </div>
               <div>
@@ -278,7 +285,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
             </div>
             <p className="text-xs font-mono text-muted-foreground mt-2">
               {isCovered
-                ? `Income covers all bills with $${safeToSpend.toFixed(2)} remaining for discretionary spending.`
+                ? `Income covers all ${monthBills.length} bills with $${safeToSpend.toFixed(2)} left for discretionary spending.`
                 : `Income is $${Math.abs(safeToSpend).toFixed(2)} short of covering all bills this month.`}
             </p>
           </CardContent>
@@ -289,7 +296,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
         <Card className="border-border border-red-500/20">
           <CardHeader className="pb-2">
             <CardTitle className="font-mono uppercase tracking-wider text-sm flex items-center gap-2 text-red-400">
-              <AlertTriangle className="w-4 h-4" /> Top Wasteful Spending — {selectedMonth}
+              <AlertTriangle className="w-4 h-4" /> Top Wasteful Spending — {monthKey}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
