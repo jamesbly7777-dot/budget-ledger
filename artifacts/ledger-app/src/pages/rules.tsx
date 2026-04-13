@@ -131,8 +131,7 @@ export default function RulesPage() {
             )}
           </div>
           <Button
-            variant="outline"
-            className="font-mono text-xs uppercase tracking-wider"
+            className="btn-orange font-mono text-xs uppercase tracking-wider"
             disabled={reapply.isPending}
             onClick={() => {
               setReapplyResult(null);

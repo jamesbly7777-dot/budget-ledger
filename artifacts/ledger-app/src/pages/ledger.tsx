@@ -375,8 +375,8 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
           </Button>
           <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
-              <Button className="font-mono text-sm uppercase tracking-wider">
-                <Plus className="h-4 w-4 mr-2" /> Add
+              <Button className="font-mono text-sm uppercase tracking-wider font-bold">
+                <Plus className="h-4 w-4 mr-2" /> Add Transaction
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px] bg-card border-border">
@@ -514,7 +514,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                     </td>
                     <td className="px-4 py-3 font-mono font-bold text-right whitespace-nowrap">${tx.amount.toFixed(2)}</td>
                     <td className="px-4 py-3 text-center whitespace-nowrap">
-                      <div className={`inline-block w-2 h-2 rounded-full ${tx.status === "cleared" ? "bg-green-500" : tx.status === "pending" ? "bg-yellow-500" : "bg-red-500"}`} title={tx.status} />
+                      <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase ${tx.status === "cleared" ? "badge-paid" : tx.status === "pending" ? "badge-pending" : "badge-review"}`}>{tx.status}</span>
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <Button

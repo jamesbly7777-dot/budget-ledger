@@ -40,12 +40,60 @@ function buildMonthOptions(existingMonths: string[], currentKey: string): string
 }
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Home",   fullLabel: "Overview",   icon: LayoutDashboard },
-  { href: "/ledger",    label: "Ledger", fullLabel: "Ledger",     icon: ListTodo },
-  { href: "/bills",     label: "Bills",  fullLabel: "Bills",      icon: Receipt },
-  { href: "/import",    label: "Import", fullLabel: "Import",     icon: Upload },
-  { href: "/analytics", label: "Stats", fullLabel: "Analytics",  icon: BarChart2 },
-  { href: "/rules",     label: "Rules",  fullLabel: "Rules",      icon: Settings2 },
+  {
+    href: "/dashboard",
+    label: "Home",
+    fullLabel: "Overview",
+    icon: LayoutDashboard,
+    iconBg: "#f97316",
+    iconGlow: "rgba(249,115,22,0.45)",
+    activeGlow: "rgba(249,115,22,0.18)",
+  },
+  {
+    href: "/ledger",
+    label: "Ledger",
+    fullLabel: "Ledger",
+    icon: ListTodo,
+    iconBg: "#3b82f6",
+    iconGlow: "rgba(59,130,246,0.45)",
+    activeGlow: "rgba(59,130,246,0.18)",
+  },
+  {
+    href: "/bills",
+    label: "Bills",
+    fullLabel: "Bills",
+    icon: Receipt,
+    iconBg: "#14b8a6",
+    iconGlow: "rgba(20,184,166,0.45)",
+    activeGlow: "rgba(20,184,166,0.18)",
+  },
+  {
+    href: "/import",
+    label: "Import",
+    fullLabel: "Import",
+    icon: Upload,
+    iconBg: "#6366f1",
+    iconGlow: "rgba(99,102,241,0.45)",
+    activeGlow: "rgba(99,102,241,0.18)",
+  },
+  {
+    href: "/analytics",
+    label: "Stats",
+    fullLabel: "Analytics",
+    icon: BarChart2,
+    iconBg: "#f59e0b",
+    iconGlow: "rgba(245,158,11,0.45)",
+    activeGlow: "rgba(245,158,11,0.18)",
+  },
+  {
+    href: "/rules",
+    label: "Rules",
+    fullLabel: "Rules",
+    icon: Settings2,
+    iconBg: "#ec4899",
+    iconGlow: "rgba(236,72,153,0.45)",
+    activeGlow: "rgba(236,72,153,0.18)",
+  },
 ];
 
 interface AppShellProps {
@@ -79,12 +127,14 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
       <aside className="hidden md:flex w-64 flex-col glass shrink-0">
         {/* Logo */}
         <div className="px-6 py-5 border-b border-white/5">
-          <h1 className="font-display text-lg font-bold tracking-widest text-primary uppercase select-none"
-            style={{ textShadow: '0 0 20px rgba(56,155,255,0.5)' }}>
-            LEDGER.
+          <h1
+            className="font-display text-xl font-black tracking-widest text-white uppercase select-none"
+            style={{ textShadow: "0 0 28px rgba(56,155,255,0.7), 0 0 60px rgba(56,155,255,0.3)" }}
+          >
+            LEDGER<span style={{ color: "#f97316", textShadow: "0 0 20px rgba(249,115,22,0.8)" }}>.</span>AI
           </h1>
           <p className="text-[9px] font-mono tracking-[0.3em] text-muted-foreground/60 mt-0.5 uppercase">
-            Financial Terminal
+            Financial Intelligence
           </p>
         </div>
 
@@ -106,7 +156,7 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
+        <nav className="flex-1 px-3 py-4 space-y-1">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = location === item.href;
@@ -114,18 +164,44 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-all text-sm font-medium group ${
-                  isActive
-                    ? "nav-item-active text-primary"
-                    : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium group relative ${
+                  isActive ? "text-white" : "text-muted-foreground hover:text-foreground"
                 }`}
+                style={
+                  isActive
+                    ? {
+                        background: `linear-gradient(135deg, ${item.iconBg}22 0%, ${item.iconBg}11 100%)`,
+                        boxShadow: `inset 0 0 0 1px ${item.iconBg}44, 0 0 20px ${item.iconBg}22`,
+                      }
+                    : {}
+                }
               >
-                <Icon className={`w-4 h-4 transition-all ${isActive ? "text-primary drop-shadow-[0_0_6px_rgba(56,155,255,0.7)]" : "group-hover:text-foreground"}`} />
-                <span className={`font-mono text-xs uppercase tracking-wider ${isActive ? "text-primary" : ""}`}>
+                {/* Colored icon badge */}
+                <span
+                  className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 transition-all"
+                  style={{
+                    background: isActive ? item.iconBg : `${item.iconBg}22`,
+                    boxShadow: isActive ? `0 0 16px ${item.iconGlow}` : "none",
+                  }}
+                >
+                  <Icon
+                    className="w-4 h-4"
+                    style={{ color: isActive ? "#fff" : item.iconBg }}
+                  />
+                </span>
+
+                <span className="font-mono text-xs uppercase tracking-wider font-semibold">
                   {item.fullLabel}
                 </span>
+
                 {isActive && (
-                  <span className="ml-auto w-1 h-4 rounded-full bg-primary" style={{ boxShadow: '0 0 6px rgba(56,155,255,0.8)' }} />
+                  <span
+                    className="ml-auto w-1.5 h-5 rounded-full"
+                    style={{
+                      background: item.iconBg,
+                      boxShadow: `0 0 10px ${item.iconGlow}`,
+                    }}
+                  />
                 )}
               </Link>
             );
@@ -135,18 +211,23 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
         {/* User footer */}
         <div className="p-4 border-t border-white/5">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full bg-primary/15 border border-primary/20 flex items-center justify-center text-xs font-mono font-bold text-primary"
-              style={{ boxShadow: '0 0 10px rgba(56,155,255,0.15)' }}>
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-mono font-bold text-white shrink-0"
+              style={{
+                background: "linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)",
+                boxShadow: "0 0 14px rgba(59,130,246,0.4)",
+              }}
+            >
               {user?.email?.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-mono text-muted-foreground truncate">{user?.email}</p>
-              <p className="text-[9px] font-mono text-primary/40 uppercase tracking-wider">Authenticated</p>
+              <p className="text-[10px] font-mono text-foreground/70 truncate">{user?.email}</p>
+              <p className="text-[9px] font-mono text-primary/50 uppercase tracking-wider">Connected</p>
             </div>
           </div>
           <button
             onClick={() => logout()}
-            className="flex items-center gap-2 text-[11px] font-mono text-muted-foreground hover:text-destructive transition-colors w-full px-2 py-1.5 rounded-md hover:bg-destructive/10 uppercase tracking-wider"
+            className="flex items-center gap-2 text-[11px] font-mono text-muted-foreground hover:text-red-400 transition-colors w-full px-2 py-1.5 rounded-md hover:bg-red-500/10 uppercase tracking-wider"
           >
             <LogOut className="w-3.5 h-3.5" />
             Sign Out
@@ -158,9 +239,11 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
       <main className="flex-1 overflow-auto pb-16 md:pb-0 relative">
         {/* Mobile Header */}
         <header className="md:hidden flex items-center justify-between px-3 py-2.5 glass-bar border-b border-white/5 sticky top-0 z-40">
-          <h1 className="font-display text-sm font-bold tracking-widest text-primary uppercase shrink-0 select-none"
-            style={{ textShadow: '0 0 16px rgba(56,155,255,0.5)' }}>
-            LEDGER.
+          <h1
+            className="font-display text-sm font-black tracking-widest text-white uppercase shrink-0 select-none"
+            style={{ textShadow: "0 0 20px rgba(56,155,255,0.6)" }}
+          >
+            LEDGER<span style={{ color: "#f97316" }}>.</span>AI
           </h1>
           <div className="flex items-center gap-2 ml-2">
             <Select value={currentMonthKey} onValueChange={onMonthChange}>
@@ -178,8 +261,13 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="w-8 h-8 rounded-full bg-primary/15 border border-primary/20 flex items-center justify-center text-xs font-mono font-bold text-primary shrink-0"
-                  style={{ boxShadow: '0 0 10px rgba(56,155,255,0.15)' }}>
+                <button
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-mono font-bold text-white shrink-0"
+                  style={{
+                    background: "linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)",
+                    boxShadow: "0 0 12px rgba(59,130,246,0.35)",
+                  }}
+                >
                   {user?.email?.charAt(0).toUpperCase()}
                 </button>
               </DropdownMenuTrigger>
@@ -206,7 +294,7 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
       </main>
 
       {/* ── Bottom Nav (Mobile) ── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[58px] glass-bar flex items-center justify-around z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[60px] glass-bar flex items-center justify-around z-50 px-1">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = location === item.href;
@@ -214,18 +302,26 @@ export function AppShell({ children, selectedMonth, onMonthChange }: AppShellPro
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center flex-1 h-full gap-[3px] transition-all ${
-                isActive ? "text-primary" : "text-muted-foreground"
-              }`}
+              className="flex flex-col items-center justify-center flex-1 h-full gap-[3px] transition-all relative"
             >
-              <Icon className={`w-[18px] h-[18px] ${isActive ? "drop-shadow-[0_0_6px_rgba(56,155,255,0.8)]" : ""}`} />
-              <span className={`text-[9px] font-mono uppercase tracking-wider leading-none ${isActive ? "text-primary" : ""}`}>
+              <span
+                className="w-8 h-7 rounded-md flex items-center justify-center transition-all"
+                style={{
+                  background: isActive ? item.iconBg : "transparent",
+                  boxShadow: isActive ? `0 0 14px ${item.iconGlow}` : "none",
+                }}
+              >
+                <Icon
+                  className="w-[16px] h-[16px]"
+                  style={{ color: isActive ? "#fff" : item.iconBg + "99" }}
+                />
+              </span>
+              <span
+                className="text-[8px] font-mono uppercase tracking-wider leading-none"
+                style={{ color: isActive ? item.iconBg : undefined }}
+              >
                 {item.label}
               </span>
-              {isActive && (
-                <span className="absolute bottom-0 w-8 h-0.5 rounded-full bg-primary"
-                  style={{ boxShadow: '0 0 8px rgba(56,155,255,0.8)' }} />
-              )}
             </Link>
           );
         })}

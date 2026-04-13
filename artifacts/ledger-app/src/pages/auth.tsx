@@ -50,12 +50,12 @@ export default function AuthPage() {
         style={{ background: 'rgba(10,15,28,0.85)' }}>
         <CardHeader className="space-y-1 text-center pb-4">
           <CardTitle
-            className="font-display text-3xl font-bold tracking-widest text-primary uppercase"
-            style={{ textShadow: '0 0 30px rgba(56,155,255,0.6)' }}>
-            LEDGER.
+            className="font-display text-3xl font-black tracking-widest text-white uppercase"
+            style={{ textShadow: '0 0 30px rgba(56,155,255,0.7), 0 0 60px rgba(56,155,255,0.3)' }}>
+            LEDGER<span style={{ color: '#f97316', textShadow: '0 0 24px rgba(249,115,22,0.9)' }}>.</span>AI
           </CardTitle>
           <CardDescription className="text-[10px] font-mono uppercase tracking-[0.35em] text-muted-foreground/70 mt-1">
-            Terminal Access
+            Financial Intelligence
           </CardDescription>
         </CardHeader>
         <CardContent>

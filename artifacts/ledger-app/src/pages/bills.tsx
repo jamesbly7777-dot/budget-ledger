@@ -299,13 +299,13 @@ function BillRow({ bill, compact = false, selectedMonth, todayDay, ledgerLinked,
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className="text-[10px] text-muted-foreground font-mono uppercase">{bill.category}</span>
             {ledgerLinked && (
-              <span className="text-[10px] font-mono text-blue-400 bg-blue-500/10 px-1.5 rounded flex items-center gap-0.5">
+              <span className="badge-recurring text-[10px] font-mono px-1.5 py-0.5 rounded flex items-center gap-0.5">
                 <Link2 className="w-2.5 h-2.5" /> Ledger
               </span>
             )}
-            {isOverdue && <span className="text-[10px] font-mono text-red-400 bg-red-500/10 px-1 rounded">OVERDUE</span>}
-            {isDueToday && <span className="text-[10px] font-mono text-yellow-400 bg-yellow-500/10 px-1 rounded">TODAY</span>}
-            {isDueSoon && <span className="text-[10px] font-mono text-orange-400 bg-orange-500/10 px-1 rounded">SOON</span>}
+            {isOverdue && <span className="badge-due text-[10px] font-mono px-1.5 py-0.5 rounded">OVERDUE</span>}
+            {isDueToday && <span className="badge-pending text-[10px] font-mono px-1.5 py-0.5 rounded">TODAY</span>}
+            {isDueSoon && <span className="badge-upcoming text-[10px] font-mono px-1.5 py-0.5 rounded">SOON</span>}
           </div>
         )}
       </div>
@@ -775,27 +775,27 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={openPaycheckSetup} className="font-mono text-xs uppercase tracking-wider">
+          <Button variant="secondary" onClick={openPaycheckSetup} className="font-mono text-xs uppercase tracking-wider">
             <Settings2 className="h-4 w-4 mr-2" /> Paycheck
           </Button>
-          <Button variant="outline" onClick={handleScan} className="font-mono text-xs uppercase tracking-wider">
+          <Button variant="secondary" onClick={handleScan} className="font-mono text-xs uppercase tracking-wider">
             <ScanSearch className="h-4 w-4 mr-2" /> Detect
           </Button>
           {(bills || []).length > 0 && (
-            <Button variant="outline" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
+            <Button onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="btn-orange font-mono text-xs uppercase tracking-wider">
               {isRunningBulk ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wrench className="h-4 w-4 mr-2" />}
               Fix Types
             </Button>
           )}
           {(bills || []).length > 0 && (
-            <Button variant="outline" onClick={() => setConfirmAction("clear")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider border-red-500/40 text-red-400 hover:bg-red-500/10">
+            <Button variant="destructive" onClick={() => setConfirmAction("clear")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider">
               <Trash className="h-4 w-4 mr-2" /> Clear All
             </Button>
           )}
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => { setPasteText(""); setParsedBills([]); setPasteOpen(true); }}
-            className="font-mono text-xs uppercase tracking-wider border-primary/40 text-primary hover:bg-primary/10"
+            className="font-mono text-xs uppercase tracking-wider"
           >
             <ClipboardList className="h-4 w-4 mr-2" /> Paste List
           </Button>
@@ -852,11 +852,11 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             )}
             <div className="flex gap-2 flex-wrap justify-center">
               {(bills || []).some((b) => !b.isRecurring) && (
-                <Button variant="outline" size="sm" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="font-mono text-xs uppercase border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
+                <Button size="sm" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="btn-orange font-mono text-xs uppercase">
                   <Wrench className="h-3.5 w-3.5 mr-2" /> Fix Types Now
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={handleScan} className="font-mono text-xs uppercase">
+              <Button variant="secondary" size="sm" onClick={handleScan} className="font-mono text-xs uppercase">
                 <ScanSearch className="h-3.5 w-3.5 mr-2" /> Detect Bills
               </Button>
               <Button size="sm" onClick={() => { setFormData(BLANK_FORM); setEditingId(null); setIsDialogOpen(true); }} className="font-mono text-xs uppercase">

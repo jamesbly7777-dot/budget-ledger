@@ -224,6 +224,68 @@
     box-shadow: 0 0 24px var(--glow-primary);
   }
 
+  /* Orange action button (secondary CTA) */
+  .btn-orange {
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+    color: #fff;
+    border: none;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    box-shadow: 0 0 18px rgba(249, 115, 22, 0.4), 0 2px 8px rgba(0,0,0,0.3);
+    transition: box-shadow 0.2s ease, transform 0.1s ease;
+  }
+  .btn-orange:hover {
+    box-shadow: 0 0 28px rgba(249, 115, 22, 0.6), 0 4px 12px rgba(0,0,0,0.3);
+    transform: translateY(-1px);
+  }
+  .btn-orange:active {
+    transform: translateY(0);
+  }
+
+  /* Solid status chip badges — high contrast, always readable */
+  .badge-upcoming {
+    background: #f97316;
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    box-shadow: 0 0 10px rgba(249,115,22,0.5);
+  }
+  .badge-recurring {
+    background: #3b82f6;
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    box-shadow: 0 0 10px rgba(59,130,246,0.5);
+  }
+  .badge-due {
+    background: #ef4444;
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    box-shadow: 0 0 10px rgba(239,68,68,0.5);
+  }
+  .badge-paid {
+    background: #16a34a;
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    box-shadow: 0 0 10px rgba(22,163,74,0.4);
+  }
+  .badge-pending {
+    background: #ca8a04;
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    box-shadow: 0 0 10px rgba(202,138,4,0.5);
+  }
+  .badge-review {
+    background: #7c3aed;
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    box-shadow: 0 0 10px rgba(124,58,237,0.5);
+  }
+
   /* Scan-line texture overlay for headers */
   .scanline {
     position: relative;
