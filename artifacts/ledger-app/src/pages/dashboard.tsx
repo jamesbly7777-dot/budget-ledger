@@ -5,6 +5,7 @@ import { Loader2, TrendingUp, TrendingDown, Activity, ShieldAlert, ShieldCheck, 
 import { Badge } from "@/components/ui/badge";
 import { getMonthKey } from "@/lib/rulesEngine";
 import { isEffectivelyPaidInMonth } from "@/lib/billStatus";
+import { NeuralBrainHero } from "@/components/ui/NeuralBrainHero";
 
 const INCOME_SOURCE_COLORS: Record<string, string> = {
   Payroll: "text-blue-400",
@@ -81,6 +82,8 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
 
   return (
     <div className="space-y-6">
+      <NeuralBrainHero income={totalIncome} spending={totalSpending} net={net} />
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card style={{ borderColor: "rgba(52,211,153,0.35)", boxShadow: "0 0 0 1px rgba(52,211,153,0.08), inset 0 1px 0 rgba(52,211,153,0.15), 0 0 32px rgba(52,211,153,0.10), 0 4px 24px rgba(0,0,0,0.4)" }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

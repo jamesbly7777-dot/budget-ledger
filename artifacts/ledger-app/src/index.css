@@ -137,12 +137,14 @@
 
   body {
     @apply font-sans antialiased text-foreground;
-    background-color: hsl(var(--background));
-    /* Tech grid */
+    background-color: hsl(222, 55%, 4%);
+    /* Subtle tech grid — horizontal + vertical lines */
     background-image:
-      linear-gradient(rgba(56, 155, 255, 0.10) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(56, 155, 255, 0.10) 1px, transparent 1px);
-    background-size: 40px 40px;
+      linear-gradient(rgba(56, 189, 248, 0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56, 189, 248, 0.055) 1px, transparent 1px),
+      linear-gradient(rgba(56, 155, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56, 155, 255, 0.025) 1px, transparent 1px);
+    background-size: 80px 80px, 80px 80px, 20px 20px, 20px 20px;
     background-attachment: fixed;
   }
 
@@ -154,9 +156,10 @@
     pointer-events: none;
     z-index: 0;
     background:
-      radial-gradient(ellipse 80% 50% at 15% 40%, rgba(56, 155, 255, 0.07) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 40% at 85% 15%, rgba(99, 102, 241, 0.05) 0%, transparent 55%),
-      radial-gradient(ellipse 50% 30% at 60% 85%, rgba(56, 189, 248, 0.04) 0%, transparent 50%);
+      radial-gradient(ellipse 70% 45% at 12% 35%, rgba(56, 189, 248, 0.09) 0%, transparent 65%),
+      radial-gradient(ellipse 55% 38% at 88% 18%, rgba(99, 102, 241, 0.07) 0%, transparent 60%),
+      radial-gradient(ellipse 45% 30% at 55% 88%, rgba(244, 114, 182, 0.05) 0%, transparent 55%),
+      radial-gradient(ellipse 50% 40% at 50% 50%, rgba(15, 23, 42, 0.5) 0%, transparent 100%);
   }
 
   #root {
