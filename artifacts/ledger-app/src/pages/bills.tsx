@@ -612,11 +612,27 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         )
       );
 
-      // 3. Delete all Bill Manager ledger entries for each affected bill (handles duplicates)
+      // 3. Delete ALL ledger entries for each affected bill —
+      //    both Bill Manager entries (by billId) AND name-matched imported bank transactions.
+      //    Must mirror the same logic as togglePaid so imported txs don't keep bills green.
       await Promise.all(
-        billsToRevert.map((bill) =>
-          firestoreService.deleteAllBillManagerEntriesForBill(user!.uid, selectedMonth, bill.id)
-        )
+        billsToRevert.map(async (bill) => {
+          const billWords = bill.name
+            .toLowerCase()
+            .replace(/[^a-z0-9 ]/g, " ")
+            .split(" ")
+            .filter((w) => w.length >= 4);
+          const allLinked = (monthTxs || []).filter((tx) => {
+            if (tx.billId === bill.id) return true;
+            if (tx.billId || tx.type === "income") return false;
+            if (billWords.length === 0) return false;
+            return billWords.some((w) => tx.name.toLowerCase().includes(w));
+          });
+          for (const tx of allLinked) {
+            await firestoreService.deleteTransaction(user!.uid, tx.id);
+          }
+          await firestoreService.removeBillManagerEntry(user!.uid, selectedMonth, bill.id);
+        })
       );
 
       // 4. Clear the log and snapshot
