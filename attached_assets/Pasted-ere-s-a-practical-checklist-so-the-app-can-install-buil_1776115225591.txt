@@ -1,0 +1,55 @@
+ere’s a practical checklist so the app can install, build, and run in Cursor (so I can run typecheck, build, and optionally dev).
+
+1. Open the right folder in Cursor
+Use the folder that actually contains ledger-app (and ideally the same layout you use on Replit), e.g.
+c:\Users\janise\Documents\ledger app\artifacts\ledger-app
+or the monorepo root if your real project is one level up with pnpm-workspace / catalog versions.
+
+2. Install Node and a package manager
+Node 20 LTS (or whatever you use on Replit) is fine.
+Your package.json uses catalog: and workspace:*. Those usually mean pnpm at the monorepo root, not plain npm install inside ledger-app alone.
+If npm install fails in ledger-app, either install from the repo root with pnpm, or we’d need to replace catalog: with real version numbers and drop/fix the @workspace/api-client-react dependency (only if it’s unused or stubbed).
+3. Add env vars (required for dev and for Firebase)
+Your vite.config.ts requires these when not building:
+
+PORT (e.g. 5173 or 3000)
+BASE_PATH (usually /)
+And the app expects Firebase (from src/lib/firebase.ts):
+
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_STORAGE_BUCKET
+VITE_FIREBASE_MESSAGING_SENDER_ID
+VITE_FIREBASE_APP_ID
+VITE_FIREBASE_MEASUREMENT_ID (if your Firebase app has it)
+Put them in ledger-app/.env or .env.local (same values as Replit / Firebase console). Don’t commit secrets; keep .env* gitignored if needed.
+
+Example shape (values are yours):
+
+PORT=5173
+BASE_PATH=/
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+VITE_FIREBASE_MEASUREMENT_ID=...
+4. Commands that prove “runnable”
+From the directory that has a working node_modules:
+
+npm run typecheck
+npm run build
+For a live server (manual clicking in the browser):
+
+npm run dev
+(Your dev script must run with PORT and BASE_PATH set—the .env file is the usual way.)
+
+5. What I can do once it runs
+Static audit works even with only typecheck / build (no Firebase account needed for many checks).
+Full interactive audit (login, Firestore, real data) needs valid Firebase env and network; that’s when the app actually runs end-to-end.
+Short version: Install deps from the correct root (pnpm monorepo vs fixed package.json), add .env with PORT + BASE_PATH + VITE_FIREBASE_*, then npm run typecheck and npm run build should succeed here.
+
+If you want, say “fix ledger-app so npm install works in artifacts only” and I can adjust package.json to remove catalog / workspace blockers so this folder is self-contained.
+
