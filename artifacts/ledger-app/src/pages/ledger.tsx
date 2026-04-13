@@ -514,7 +514,9 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                     </td>
                     <td className="px-4 py-3 font-mono font-bold text-right whitespace-nowrap">${tx.amount.toFixed(2)}</td>
                     <td className="px-4 py-3 text-center whitespace-nowrap">
-                      <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase ${tx.status === "cleared" ? "badge-paid" : tx.status === "pending" ? "badge-pending" : "badge-review"}`}>{tx.status}</span>
+                      {tx.status !== "cleared" && (
+                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase ${tx.status === "pending" ? "badge-pending" : "badge-review"}`}>{tx.status}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <Button
