@@ -511,14 +511,27 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       } else {
         await firestoreService.updateBill(user!.uid, bill.id, { isPaid: false });
       }
-      // 2. Delete ALL Bill Manager entries for this bill in this month (handles duplicates)
-      await firestoreService.deleteAllBillManagerEntriesForBill(user!.uid, selectedMonth, bill.id);
-      // 3. Delete the linked ledger transaction (whether imported or Bill-Manager-created)
-      //    so findLinkedTransaction no longer finds it and the bill shows as unpaid.
-      if (linkedTx) {
-        await firestoreService.deleteTransaction(user!.uid, linkedTx.id);
+      // 2. Build name-word list for fuzzy matching
+      const billWords = bill.name
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]/g, " ")
+        .split(" ")
+        .filter((w) => w.length >= 4);
+      // 3. Delete EVERY transaction in this month that is linked to this bill —
+      //    either by billId (Bill Manager entries) OR by name-word match (imported bank txs).
+      //    Both must be removed, otherwise the name-matched one keeps the bill green.
+      const allLinked = (monthTxs || []).filter((tx) => {
+        if (tx.billId === bill.id) return true;               // Bill Manager entry
+        if (tx.billId || tx.type === "income") return false;   // different bill or income
+        if (billWords.length === 0) return false;
+        return billWords.some((w) => tx.name.toLowerCase().includes(w)); // imported tx
+      });
+      for (const tx of allLinked) {
+        await firestoreService.deleteTransaction(user!.uid, tx.id);
       }
-      toast({ description: `${bill.name} marked unpaid.${linkedTx ? " Linked ledger entry removed." : ""}` });
+      // 4. Clean up Bill Manager metadata log regardless
+      await firestoreService.removeBillManagerEntry(user!.uid, selectedMonth, bill.id);
+      toast({ description: `${bill.name} marked unpaid.${allLinked.length > 0 ? " Removed from ledger." : ""}` });
     } else {
       // Marking paid
       if (bill.isRecurring) {
