@@ -289,8 +289,33 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
     setPreviewItems((items) => items.map((it) => (it.id === id ? { ...it, recurringBill } : it)));
   };
 
+  /**
+   * Normalize any date string to YYYY-MM-DD for consistent storage & sorting.
+   * Handles MM/DD/YYYY (from AI parser) and YYYY-MM-DD (from CSV parser).
+   */
+  const toISODate = (raw: string): string => {
+    if (!raw) return raw;
+    const trimmed = raw.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const mdy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (mdy) {
+      const [, m, d, y] = mdy;
+      const fullYear = y.length === 2 ? `20${y}` : y;
+      return `${fullYear}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    }
+    return trimmed;
+  };
+
+  /** Extract YYYY-MM from a normalized ISO date string. */
+  const monthFromISO = (isoDate: string): string => {
+    const m = isoDate.match(/^(\d{4}-\d{2})/);
+    return m ? m[1] : selectedMonth;
+  };
+
   const parseDueDayFromDate = (date: string): number => {
     try {
+      // Handle both YYYY-MM-DD and MM/DD/YYYY
+      if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return parseInt(date.split("-")[2], 10) || 1;
       const parts = date.split("/");
       if (parts.length >= 2) return parseInt(parts[1], 10) || 1;
     } catch { /* noop */ }
@@ -305,19 +330,10 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
     }
 
     const payload = toSave.map((it) => {
-      let month = selectedMonth;
-      try {
-        const parts = it.date.split("/");
-        if (parts.length === 3) {
-          const m = parts[0].padStart(2, "0");
-          const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
-          month = `${y}-${m}`;
-        }
-      } catch {
-        month = selectedMonth;
-      }
+      const isoDate = toISODate(it.date);
+      const month = monthFromISO(isoDate) || selectedMonth;
       return {
-        date: it.date,
+        date: isoDate,
         name: it.name,
         amount: it.amount,
         category: it.resolvedCategory,

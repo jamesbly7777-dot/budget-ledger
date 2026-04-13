@@ -31,7 +31,6 @@ export function parseCSV(file: File): Promise<ParsedRow[]> {
               ""
             ).trim();
 
-            // Check for split debit/credit columns first (some banks export Amount, Debit, Credit separately)
             const creditRaw = row["Credit"] || row["credit"] || row["Deposit"] || "";
             const debitRaw = row["Debit"] || row["debit"] || row["Withdrawal"] || "";
 
@@ -49,7 +48,6 @@ export function parseCSV(file: File): Promise<ParsedRow[]> {
                 txType = "expense";
               }
             } else {
-              // Single Amount column: positive = deposit (income), negative = withdrawal (expense)
               const amountRaw =
                 row["Amount"] ||
                 row["amount"] ||
@@ -57,7 +55,6 @@ export function parseCSV(file: File): Promise<ParsedRow[]> {
                 "0";
               const signed = parseFloat(amountRaw.replace(/[$,]/g, "")) || 0;
               rawAmount = Math.abs(signed);
-              // Positive means credit/deposit → income; negative means debit/withdrawal → expense
               txType = signed > 0 ? "income" : "expense";
             }
 
@@ -78,14 +75,44 @@ export function parseCSV(file: File): Promise<ParsedRow[]> {
   });
 }
 
-function normalizeDate(raw: string): string {
+/**
+ * Normalize any common bank date format to YYYY-MM-DD (ISO) for consistent
+ * storage and lexicographic sorting. Avoids UTC-midnight timezone shift by
+ * never feeding ISO strings into `new Date()` without explicit UTC handling.
+ */
+export function normalizeDate(raw: string): string {
   if (!raw) return "";
-  const d = new Date(raw.trim());
-  if (isNaN(d.getTime())) return raw.trim();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const y = d.getFullYear();
-  return `${m}/${day}/${y}`;
+  const trimmed = raw.trim();
+
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+  // YYYY-MM-DD with optional time (e.g. "2026-04-10T00:00:00")
+  const isoTimeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T ]/);
+  if (isoTimeMatch) return isoTimeMatch[1];
+
+  // MM/DD/YYYY or M/D/YYYY or M/D/YY
+  const mdySlash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (mdySlash) {
+    const [, m, d, y] = mdySlash;
+    const fullYear = y.length === 2 ? `20${y}` : y;
+    return `${fullYear}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  // MM-DD-YYYY (some exports use dashes with US ordering)
+  const mdyDash = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (mdyDash) {
+    const [, m, d, y] = mdyDash;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  // Last resort: parse via Date but read UTC parts to avoid timezone shift
+  const d = new Date(trimmed);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().substring(0, 10);
+  }
+
+  return trimmed;
 }
 
 export function exportToCSV(

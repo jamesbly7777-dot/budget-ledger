@@ -7,6 +7,21 @@ import { getMonthKey } from "@/lib/rulesEngine";
 import { isEffectivelyPaidInMonth } from "@/lib/billStatus";
 import { NeuralBrainHero } from "@/components/ui/NeuralBrainHero";
 
+function fmtDate(raw: string): string {
+  if (!raw) return raw;
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    const d = new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]));
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  const mdy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (mdy) {
+    const d = new Date(parseInt(mdy[3].length === 2 ? `20${mdy[3]}` : mdy[3]), parseInt(mdy[1]) - 1, parseInt(mdy[2]));
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  return raw;
+}
+
 const INCOME_SOURCE_COLORS: Record<string, string> = {
   Payroll: "text-blue-400",
   "Gig Work": "text-purple-400",
@@ -315,7 +330,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
                   <span className="font-mono text-sm text-muted-foreground w-5">{i + 1}</span>
                   <div className="flex-1 min-w-0">
                     <p className="font-mono text-sm truncate">{tx.name}</p>
-                    <p className="text-xs font-mono text-muted-foreground">{tx.date}</p>
+                    <p className="text-xs font-mono text-muted-foreground">{fmtDate(tx.date)}</p>
                   </div>
                   <span className="font-mono font-bold text-sm text-red-400">${tx.amount.toFixed(2)}</span>
                 </div>
@@ -342,7 +357,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
                       {isIncome ? <TrendingUp className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
                       <div>
                         <p className="text-sm font-medium font-sans truncate w-[140px] sm:w-[220px]">{tx.name}</p>
-                        <p className="text-xs text-muted-foreground font-mono">{tx.date}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{fmtDate(tx.date)}</p>
                       </div>
                     </div>
                     <div className="text-right">

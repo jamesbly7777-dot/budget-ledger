@@ -34,6 +34,24 @@ function getCategoryColor(category: string): string {
   return BASE_CATEGORY_COLORS[category] ?? "bg-violet-500/20 text-violet-400 border-violet-500/30";
 }
 
+/** Format any stored date string (YYYY-MM-DD or MM/DD/YYYY) to "Apr 10" for display. */
+function fmtDate(raw: string): string {
+  if (!raw) return raw;
+  // YYYY-MM-DD — parse as local date (avoid UTC shift by splitting manually)
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    const d = new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]));
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  // MM/DD/YYYY
+  const mdy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (mdy) {
+    const d = new Date(parseInt(mdy[3].length === 2 ? `20${mdy[3]}` : mdy[3]), parseInt(mdy[1]) - 1, parseInt(mdy[2]));
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  return raw;
+}
+
 const BLANK_FORM = {
   date: new Date().toISOString().split("T")[0],
   name: "",
@@ -102,7 +120,7 @@ function SplitDialog({ tx, allCategories, onAddCategory, onConfirm, onClose }: S
           <span className="font-mono text-sm truncate max-w-[260px]">{tx.name}</span>
           <span className="font-mono font-bold text-sm">${original.toFixed(2)}</span>
         </div>
-        <p className="text-xs font-mono text-muted-foreground mt-0.5">{tx.date} · {tx.month}</p>
+        <p className="text-xs font-mono text-muted-foreground mt-0.5">{fmtDate(tx.date)} · {tx.month}</p>
       </div>
 
       <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
@@ -494,7 +512,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm truncate" title={tx.name}>{tx.name}</p>
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          <span className="font-mono text-xs text-muted-foreground">{tx.date}</span>
+                          <span className="font-mono text-xs text-muted-foreground">{fmtDate(tx.date)}</span>
                           <Badge variant="outline" className={`font-mono text-[10px] uppercase border ${getCategoryColor(tx.category)}`}>
                             {tx.category}
                           </Badge>
@@ -558,7 +576,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
               ) : (
                 filtered.map((tx) => (
                   <tr key={tx.id} className="border-b border-border/50 hover:bg-muted/10 transition-colors">
-                    <td className="px-4 py-3 font-mono text-muted-foreground whitespace-nowrap">{tx.date}</td>
+                    <td className="px-4 py-3 font-mono text-muted-foreground whitespace-nowrap">{fmtDate(tx.date)}</td>
                     <td className="px-4 py-3 font-medium max-w-[200px]">
                       <p className="truncate" title={tx.name}>{tx.name}</p>
                       {tx.note && <p className="text-[10px] font-mono text-muted-foreground/70 truncate mt-0.5">{tx.note}</p>}
@@ -625,7 +643,7 @@ export default function LedgerPage({ selectedMonth }: { selectedMonth: string })
                 <div className="space-y-1">
                   {group.map((tx, j) => (
                     <div key={tx.id} className={`flex items-center justify-between text-xs font-mono ${j === 0 ? "text-foreground" : "text-muted-foreground line-through"}`}>
-                      <span>{tx.date} — {tx.name.slice(0, 35)}</span>
+                      <span>{fmtDate(tx.date)} — {tx.name.slice(0, 35)}</span>
                       <span className="ml-2 flex-shrink-0">${Math.abs(tx.amount).toFixed(2)} ({tx.month}) {j === 0 ? "✓ keep" : "✗ remove"}</span>
                     </div>
                   ))}
