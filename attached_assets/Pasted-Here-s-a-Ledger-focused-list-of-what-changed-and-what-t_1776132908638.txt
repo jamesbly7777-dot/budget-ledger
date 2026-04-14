@@ -1,0 +1,35 @@
+Here’s a Ledger-focused list of what changed and what to sync to Replit.
+
+Files to copy (same paths in your Replit app)
+File	What changed
+src/pages/ledger.tsx
+Month strip (“Month for this ledger” + label), month <Select> (same options as sidebar), props onMonthChange + selectedMonth. Income (month) / Expenses (month) use all transactions in that month with Math.abs, not search/category filters. Note when list is filtered. CyberHero at top. monthKey for new/edited transactions and CSV export filename. Imports getMonthKey, formatMonthLabel, buildMonthOptions, CalendarDays.
+src/App.tsx
+<LedgerPage selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} /> so the Ledger month dropdown updates global month.
+src/lib/monthNav.ts
+New file — shared buildMonthOptions() for month dropdowns (Ledger + shell).
+src/components/CyberHero.tsx
+Hero block Ledger renders at the top (image + “Analyzing data…” bar — needs public/ledger-hero-brain.png if you use that asset).
+src/components/layout/AppShell.tsx
+Uses import { buildMonthOptions } from "@/lib/monthNav" instead of a duplicate local function (keep in sync with monthNav.ts). If your Replit shell also has LEDGER AI header / Balance / Due, those edits are in this file too.
+One sentence for Replit / another dev
+“Ledger now has its own month picker wired to onMonthChange, month income/expense totals are for the full selected month (not filtered by search/category), and monthNav.ts centralizes month options; App.tsx passes onMonthChange into LedgerPage; Ledger still imports CyberHero.”
+
+Optional (not Ledger, but we fixed Analytics)
+If Replit should match your local app everywhere: also sync src/pages/analytics.tsx (full month data, billsForBillManagerMonth for income coverage, discretionary line under Waste).
+
+Deploy reminder
+After pasting files: save → rebuild / run on Replit. Ensure src/lib/monthNav.ts exists and imports resolve (@/lib/monthNav).
+
+do i need to tell replit anything more then just that?
+
+Usually no — if Replit already runs your app today, syncing those files (and monthNav.ts) is enough for the Ledger work.
+
+Add these only if they apply:
+
+New file — Create src/lib/monthNav.ts if it isn’t there; both AppShell and ledger.tsx import it.
+Hero image — If CyberHero is included, add public/ledger-hero-brain.png (or whatever path your CyberHero.tsx uses), or the hero image will 404 (layout still works).
+CSS — If the hero’s “Analyzing data…” bar animation is missing, copy the .ledger-hero-scan-fill / @keyframes ledger-hero-scan block from your local src/index.css into Replit’s index.css.
+Analytics — Only if you want the same waste/coverage fixes: sync src/pages/analytics.tsx too.
+Secrets — No change for Ledger; same VITE_FIREBASE_*, PORT, BASE_PATH as before.
+Bottom line: Tell Replit “replace/add those files and redeploy”; the extra items above are only if something’s missing or looks broken after deploy.
