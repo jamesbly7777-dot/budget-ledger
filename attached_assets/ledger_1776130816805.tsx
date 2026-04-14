@@ -252,6 +252,7 @@ export default function LedgerPage({
 
   const listFiltered = filterCat !== "all" || !!search.trim();
 
+  /** Full month totals (matches Overview math: abs on amounts). */
   const expenseTotalMonth = txs
     .filter((t) => !t.type || t.type === "expense")
     .reduce((s, t) => s + Math.abs(t.amount), 0);
