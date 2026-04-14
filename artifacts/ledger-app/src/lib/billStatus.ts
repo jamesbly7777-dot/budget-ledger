@@ -27,6 +27,10 @@ export function isEffectivelyPaidInMonth(bill: Bill, month: string, transactions
   return isPaidInMonth(bill, month) || !!findLinkedTransaction(bill, transactions);
 }
 
-export function billsForBillManagerMonth(bills: Bill[]): Bill[] {
-  return bills.filter((b) => b.isActive !== false);
+export function billsForBillManagerMonth(bills: Bill[], monthKey?: string): Bill[] {
+  return bills.filter((b) => {
+    if (b.isActive === false) return false;
+    if (!monthKey) return true;
+    return b.isRecurring || !b.month || b.month === monthKey;
+  });
 }

@@ -60,6 +60,7 @@ export default function AnalyticsPage({ selectedMonth }: { selectedMonth: string
     setGoalsOpen(false);
   };
 
+  /** Every month that has at least one transaction (sorted). Used for charts + “vs prior month”. */
   const monthlyDataAll = useMemo(() => {
     if (!allTxs) return [];
     const byMonth: Record<string, Transaction[]> = {};
@@ -78,6 +79,10 @@ export default function AnalyticsPage({ selectedMonth }: { selectedMonth: string
     });
   }, [allTxs]);
 
+  /**
+   * Stats for the **selected** month only — always derived from all transactions for that month.
+   * (Previously we only kept the last 6 months in memory, so older months like April could be wrong or missing.)
+   */
   const currentMonthData = useMemo(() => {
     if (!allTxs) return null;
     const txs = allTxs.filter((t) => t.month === monthKey);
@@ -85,7 +90,13 @@ export default function AnalyticsPage({ selectedMonth }: { selectedMonth: string
     const incTotals = computeIncomeTotals(txs);
     const totalSpending = Object.values(catTotals).reduce((a, b) => a + b, 0);
     const totalIncome = Object.values(incTotals).reduce((a, b) => a + b, 0);
-    return { month: monthKey, label: formatMonthLabel(monthKey), categories: catTotals, totalSpending, totalIncome };
+    return {
+      month: monthKey,
+      label: formatMonthLabel(monthKey),
+      categories: catTotals,
+      totalSpending,
+      totalIncome,
+    };
   }, [allTxs, monthKey]);
 
   const currentIdx = monthlyDataAll.findIndex((m) => m.month === monthKey);
@@ -108,6 +119,7 @@ export default function AnalyticsPage({ selectedMonth }: { selectedMonth: string
 
   const wasteGoal = goals["Waste"];
   const wasteCurrent = currentMonthData?.categories["Waste"] ?? 0;
+  /** Often closer to what people mean by “wasteful” than Waste-only. */
   const discretionaryTotal =
     (currentMonthData?.categories["Shopping"] ?? 0) +
     (currentMonthData?.categories["Personal"] ?? 0) +
@@ -116,6 +128,7 @@ export default function AnalyticsPage({ selectedMonth }: { selectedMonth: string
   const wasteChange = wastePrev > 0 ? ((wasteCurrent - wastePrev) / wastePrev) * 100 : 0;
   const wasteImproving = wasteCurrent < wastePrev && wastePrev > 0;
 
+  /** Same bill set as Overview / Bill Manager (not `isRecurring || month === …` alone). */
   const monthlyBillsTotal = billsForBillManagerMonth(bills || [], monthKey).reduce((s, b) => s + b.amount, 0);
   const currentIncome = currentMonthData?.totalIncome || 0;
   const safeToSpend = currentIncome - monthlyBillsTotal;
@@ -176,7 +189,9 @@ export default function AnalyticsPage({ selectedMonth }: { selectedMonth: string
                 <div className="flex items-center gap-2 mt-1">
                   {wastePrev > 0 ? (
                     <>
-                      {wasteImproving ? <TrendingDown className="w-4 h-4 text-green-400" /> : <TrendingUp className="w-4 h-4 text-red-400" />}
+                      {wasteImproving
+                        ? <TrendingDown className="w-4 h-4 text-green-400" />
+                        : <TrendingUp className="w-4 h-4 text-red-400" />}
                       <span className={`font-mono text-sm ${wasteImproving ? "text-green-400" : "text-red-400"}`}>
                         {wasteImproving ? "↓" : "↑"}{Math.abs(wasteChange).toFixed(0)}% vs {prevMonthData?.label}
                       </span>
@@ -262,9 +277,9 @@ export default function AnalyticsPage({ selectedMonth }: { selectedMonth: string
 
       <Card className="surface-tech">
         <CardHeader className="pb-2">
-          <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-            Net Cash Flow — Last {netFlowData.length} Month{netFlowData.length !== 1 ? "s" : ""} (of {monthlyDataAll.length} with data)
-          </CardTitle>
+            <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              Net Cash Flow — Last {netFlowData.length} Month{netFlowData.length !== 1 ? "s" : ""} (of {monthlyDataAll.length} with data)
+            </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-[260px]">
@@ -331,6 +346,7 @@ export default function AnalyticsPage({ selectedMonth }: { selectedMonth: string
               const pctChange = previous > 0 ? ((current - previous) / previous) * 100 : null;
               const improved = previous > 0 && current < previous;
               const worsened = previous > 0 && current > previous;
+
               return (
                 <div key={cat} className="flex items-center gap-3 px-6 py-3">
                   <div className="w-28 font-mono text-sm">{cat}</div>
