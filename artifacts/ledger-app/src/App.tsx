@@ -40,7 +40,7 @@ function ProtectedApp() {
           </Route>
           <Route path="/ledger">
             <ErrorBoundary pageName="Ledger">
-              <LedgerPage selectedMonth={selectedMonth} />
+              <LedgerPage selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
             </ErrorBoundary>
           </Route>
           <Route path="/bills">

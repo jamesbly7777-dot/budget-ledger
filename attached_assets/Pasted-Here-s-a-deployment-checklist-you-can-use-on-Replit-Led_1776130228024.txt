@@ -1,0 +1,57 @@
+Here’s a deployment checklist you can use on Replit. “Ledger” work touches more than one file (the page, routing, a small shared helper, the hero, and the shell that shares the month list).
+
+1. Files to copy into Replit (same paths under your app root)
+Path	Why
+src/pages/ledger.tsx
+Month strip + dropdown, month totals, monthKey for save/export
+src/App.tsx
+Passes onMonthChange into <LedgerPage />
+src/lib/monthNav.ts
+New file — buildMonthOptions() used by Ledger + AppShell
+src/components/CyberHero.tsx
+Ledger imports this at the top of the page
+src/components/layout/AppShell.tsx
+Imports buildMonthOptions from @/lib/monthNav (must match)
+On your PC they live under:
+
+c:\Users\janise\Documents\ledger app\artifacts\ledger-app\
+
+Copy each file’s full contents into the same path on Replit (replace existing files; create src/lib/monthNav.ts if it doesn’t exist).
+
+2. Asset for the hero (if you use this CyberHero)
+CyberHero expects:
+
+public/ledger-hero-brain.png
+
+If that file isn’t on Replit, the hero still renders but the image will 404. Copy that PNG from your project’s public folder if you have it.
+
+3. Small files you can paste here
+src/lib/monthNav.ts (entire file):
+
+import { getMonthKey } from "@/lib/rulesEngine";
+/** Month keys for the nav dropdown (data months + rolling window), same logic as AppShell. */
+export function buildMonthOptions(existingMonths: string[], currentKey: string): string[] {
+  const keys = new Set<string>(existingMonths);
+  keys.add(currentKey);
+  const now = new Date();
+  for (let i = 0; i < 13; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    keys.add(getMonthKey(d));
+  }
+  return Array.from(keys).sort((a, b) => b.localeCompare(a));
+}
+src/App.tsx — the only route change you need vs an older Replit is the Ledger line:
+
+<LedgerPage selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+(Full App.tsx is short; easiest is to replace the whole file with your local copy.)
+
+src/components/CyberHero.tsx — replace Replit’s version with your entire local CyberHero.tsx (yours uses /ledger-hero-brain.png and the “Analyzing data…” bar; don’t paste a partial file).
+
+4. Large files
+src/pages/ledger.tsx and src/components/layout/AppShell.tsx are long. Don’t hand-copy line-by-line: in Cursor, open each file → Select all → Copy → paste into Replit’s editor for that path.
+5. After pasting
+On Replit: Stop → Run (or your deploy flow) so it rebuilds. If the build errors, it’s usually a missing monthNav.ts or an old AppShell that still defines buildMonthOptions locally instead of importing from @/lib/monthNav.
+
+Fastest path if you use Git elsewhere: push from the machine where Cursor edited the repo, then pull on Replit so you don’t manually sync five files.
+
+I can’t attach a zip from here; the authoritative copies are the files at the paths above in your artifacts ledger-app folder.

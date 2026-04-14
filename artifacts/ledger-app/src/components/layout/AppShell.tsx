@@ -26,18 +26,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getMonthKey, formatMonthLabel } from "@/lib/rulesEngine";
+import { buildMonthOptions } from "@/lib/monthNav";
 import { useEffect, useMemo } from "react";
-
-function buildMonthOptions(existingMonths: string[], currentKey: string): string[] {
-  const keys = new Set<string>(existingMonths);
-  keys.add(currentKey);
-  const now = new Date();
-  for (let i = 0; i < 13; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    keys.add(getMonthKey(d));
-  }
-  return Array.from(keys).sort((a, b) => b.localeCompare(a));
-}
 
 const NAV_ITEMS = [
   {
