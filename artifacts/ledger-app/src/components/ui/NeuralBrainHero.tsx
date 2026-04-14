@@ -12,7 +12,7 @@ export function NeuralBrainHero({ income, spending, net, compact }: { income: nu
 
     let t = 0;
     const W = 900;
-    const H = 260;
+    const H = 220;
     const cx = W / 2;
     const cy = H / 2;
 
@@ -126,12 +126,11 @@ export function NeuralBrainHero({ income, spending, net, compact }: { income: nu
   }, []);
 
   return (
-    <div className="w-full mb-6">
-      {/* ── Brain image card ── */}
+    <div className="w-full mb-4">
+      {/* ── Brain card — 30% shorter on mobile, 20% shorter on desktop ── */}
       <div
-        className="relative w-full overflow-hidden rounded-t-2xl"
+        className="relative w-full overflow-hidden rounded-t-2xl h-[140px] md:h-[160px]"
         style={{
-          height: "200px",
           background: "linear-gradient(180deg, rgba(12,20,40,0.98) 0%, rgba(8,14,32,0.95) 100%)",
           border: "1px solid rgba(0,212,255,0.18)",
           borderBottom: "none",
@@ -159,8 +158,8 @@ export function NeuralBrainHero({ income, spending, net, compact }: { income: nu
         {/* Scanlines */}
         <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 3px, rgba(0,0,0,0.04) 4px)", zIndex: 3, pointerEvents: "none" }} />
 
-        {/* Content — logo + scan bar only, no stats */}
-        <div className="absolute inset-0 flex flex-col items-center justify-between py-5 px-4" style={{ zIndex: 4 }}>
+        {/* Content — single LEDGER.AI title + scan bar only */}
+        <div className="absolute inset-0 flex flex-col items-center justify-between py-4 px-4" style={{ zIndex: 4 }}>
           <div className="text-center select-none">
             <h1
               className="font-display font-black uppercase"
@@ -168,15 +167,10 @@ export function NeuralBrainHero({ income, spending, net, compact }: { income: nu
             >
               LEDGER<span style={{ color: "#f97316", textShadow: "0 0 30px rgba(249,115,22,1)" }}>.</span>AI
             </h1>
-            {!compact && (
-              <p className="font-mono uppercase mt-1" style={{ fontSize: "clamp(0.45rem, 1.8vw, 0.6rem)", letterSpacing: "0.4em", color: "rgba(148,163,184,0.65)" }}>
-                Neural finance core
-              </p>
-            )}
           </div>
-          {/* Scan bar at the bottom of the brain */}
+          {/* Scan bar at the bottom */}
           <div className="w-full px-2">
-            <p className="font-mono uppercase mb-1" style={{ fontSize: "0.55rem", letterSpacing: "0.25em", color: "rgba(0,212,255,0.65)" }}>Analyzing data…</p>
+            <p className="font-mono uppercase mb-1" style={{ fontSize: "0.62rem", letterSpacing: "0.2em", color: "rgba(0,212,255,0.7)" }}>Analyzing data…</p>
             <div style={{ height: "2px", background: "rgba(255,255,255,0.08)", borderRadius: "1px", overflow: "hidden" }}>
               <div className="ledger-hero-scan-fill" style={{ height: "100%", background: "linear-gradient(to right, #00d4ff, #f97316)", borderRadius: "1px" }} />
             </div>
@@ -202,9 +196,9 @@ export function NeuralBrainHero({ income, spending, net, compact }: { income: nu
         </div>
       </div>{/* end brain card */}
 
-      {/* ── Stats strip — below the brain, clean dark bar ── */}
+      {/* ── Stats strip — below the brain ── */}
       <div
-        className="flex items-center justify-around px-4 py-3 rounded-b-2xl"
+        className="flex items-center justify-around px-4 py-2.5 rounded-b-2xl"
         style={{
           background: "rgba(8,14,32,0.96)",
           border: "1px solid rgba(0,212,255,0.18)",
@@ -212,22 +206,22 @@ export function NeuralBrainHero({ income, spending, net, compact }: { income: nu
         }}
       >
         <div className="text-center">
-          <p className="font-mono uppercase text-emerald-400/60 mb-0.5" style={{ fontSize: "0.55rem", letterSpacing: "0.15em" }}>Income</p>
-          <p className="font-mono font-bold text-emerald-400" style={{ fontSize: "clamp(0.9rem, 3vw, 1.15rem)", textShadow: "0 0 14px rgba(52,211,153,0.6)", lineHeight: 1 }}>
+          <p className="font-mono uppercase text-emerald-400/70 mb-0.5" style={{ fontSize: "0.62rem", letterSpacing: "0.12em" }}>Income</p>
+          <p className="font-mono font-bold text-emerald-400" style={{ fontSize: "clamp(0.95rem, 3.5vw, 1.2rem)", textShadow: "0 0 14px rgba(52,211,153,0.6)", lineHeight: 1 }}>
             ${income.toLocaleString("en-US", { maximumFractionDigits: 0 })}
           </p>
         </div>
-        <div className="w-px self-stretch bg-white/8 mx-2" />
+        <div className="w-px self-stretch bg-white/10 mx-2" />
         <div className="text-center">
-          <p className="font-mono uppercase text-red-400/60 mb-0.5" style={{ fontSize: "0.55rem", letterSpacing: "0.15em" }}>Spending</p>
-          <p className="font-mono font-bold text-red-400" style={{ fontSize: "clamp(0.9rem, 3vw, 1.15rem)", textShadow: "0 0 14px rgba(239,68,68,0.6)", lineHeight: 1 }}>
+          <p className="font-mono uppercase text-red-400/70 mb-0.5" style={{ fontSize: "0.62rem", letterSpacing: "0.12em" }}>Spending</p>
+          <p className="font-mono font-bold text-red-400" style={{ fontSize: "clamp(0.95rem, 3.5vw, 1.2rem)", textShadow: "0 0 14px rgba(239,68,68,0.6)", lineHeight: 1 }}>
             ${spending.toLocaleString("en-US", { maximumFractionDigits: 0 })}
           </p>
         </div>
-        <div className="w-px self-stretch bg-white/8 mx-2" />
+        <div className="w-px self-stretch bg-white/10 mx-2" />
         <div className="text-center">
-          <p className="font-mono uppercase mb-0.5" style={{ fontSize: "0.55rem", letterSpacing: "0.15em", color: net >= 0 ? "rgba(52,211,153,0.6)" : "rgba(239,68,68,0.6)" }}>Net</p>
-          <p className="font-mono font-bold" style={{ fontSize: "clamp(0.9rem, 3vw, 1.15rem)", color: net >= 0 ? "#34d399" : "#f87171", textShadow: net >= 0 ? "0 0 14px rgba(52,211,153,0.6)" : "0 0 14px rgba(239,68,68,0.6)", lineHeight: 1 }}>
+          <p className="font-mono uppercase mb-0.5" style={{ fontSize: "0.62rem", letterSpacing: "0.12em", color: net >= 0 ? "rgba(52,211,153,0.7)" : "rgba(239,68,68,0.7)" }}>Net</p>
+          <p className="font-mono font-bold" style={{ fontSize: "clamp(0.95rem, 3.5vw, 1.2rem)", color: net >= 0 ? "#34d399" : "#f87171", textShadow: net >= 0 ? "0 0 14px rgba(52,211,153,0.6)" : "0 0 14px rgba(239,68,68,0.6)", lineHeight: 1 }}>
             {net >= 0 ? "+" : ""}${Math.abs(net).toLocaleString("en-US", { maximumFractionDigits: 0 })}
           </p>
         </div>

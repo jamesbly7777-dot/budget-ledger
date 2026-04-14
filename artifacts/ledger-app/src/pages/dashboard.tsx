@@ -96,7 +96,7 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
     .slice(0, 10);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <NeuralBrainHero income={totalIncome} spending={totalSpending} net={net} />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
