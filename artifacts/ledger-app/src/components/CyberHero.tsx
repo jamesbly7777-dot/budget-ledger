@@ -23,7 +23,7 @@ export function CyberHero({ compact = false }: CyberHeroProps) {
         <div className="absolute -right-12 bottom-0 h-56 w-56 rounded-full bg-fuchsia-500/12 blur-3xl" />
       </div>
 
-      {/* Reference artwork — PNG already includes "LEDGER AI" over the brain */}
+      {/* Reference artwork — PNG already includes “LEDGER AI” over the brain */}
       <div className={`relative z-0 w-full overflow-hidden rounded-2xl ${frame}`}>
         <img
           src={HERO_BRAIN_SRC}

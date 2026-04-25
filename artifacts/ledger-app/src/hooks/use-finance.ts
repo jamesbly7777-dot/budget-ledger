@@ -10,7 +10,16 @@ export function useTransactions(month?: string) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) { setData(undefined); setIsLoading(false); return; }
+    if (!user) {
+      setData(undefined);
+      setIsLoading(false);
+      return;
+    }
+    if (month === "") {
+      setData(undefined);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     const unsubscribe = service.subscribeTransactions(user.uid, month, (txs) => {
       setData(txs);
@@ -190,6 +199,29 @@ export function useReapplyRules() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions", user?.uid] });
       queryClient.invalidateQueries({ queryKey: ["months", user?.uid] });
+    },
+  });
+}
+
+export function useTransactionSourceCounts(month: string) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["txSourceCounts", user?.uid, month],
+    queryFn: () => service.getTransactionSourceCounts(user!.uid, month),
+    enabled: !!user && !!month,
+    staleTime: 0,
+  });
+}
+
+export function useRepairTransactions() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (month: string) => service.repairTransactionsForMonth(user!.uid, month),
+    onSuccess: (_, month) => {
+      queryClient.invalidateQueries({ queryKey: ["transactions", user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ["months", user?.uid] });
+      service.recalculateMonthTotals(user!.uid, month);
     },
   });
 }

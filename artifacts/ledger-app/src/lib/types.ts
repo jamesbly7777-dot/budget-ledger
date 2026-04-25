@@ -7,17 +7,19 @@ export type TransactionCategory =
   | "Transfers"
   | "Personal"
   | "Waste"
+  | "Work Expense"
   | "Uncategorized";
 
 export const DEFAULT_EXPENSE_CATEGORIES: string[] = [
   "Bills", "Fuel", "Necessary", "Medical", "Shopping",
-  "Transfers", "Personal", "Waste", "Uncategorized",
+  "Transfers", "Personal", "Waste", "Work Expense", "Uncategorized",
 ];
 
 export type IncomeCategory =
   | "Payroll"
   | "Gig Work"
   | "Cash Transfer"
+  | "Refund / Return"
   | "Side Business"
   | "Other Income";
 
@@ -25,13 +27,32 @@ export const INCOME_CATEGORIES: IncomeCategory[] = [
   "Payroll",
   "Gig Work",
   "Cash Transfer",
+  "Refund / Return",
   "Side Business",
   "Other Income",
 ];
 
 export type TransactionType = "expense" | "income";
 
+export type DuplicateReason =
+  | "exact_duplicate"
+  | "posting_date_match"
+  | "pending_to_posted_match"
+  | "same_amount_same_merchant_date_window"
+  | "batch_exact_duplicate";
+
 export type TransactionStatus = "cleared" | "pending" | "review";
+
+export type ExcludeReason =
+  | "exact_duplicate"
+  | "possible_duplicate_pending_posted"
+  | "manual_bill_matched_to_import"
+  | "refund_reversal"
+  | "internal_transfer"
+  | "hidden_by_user"
+  | "excluded_by_user"
+  | "category_override"
+  | "suspected_duplicate_needs_review";
 
 export interface Transaction {
   id: string;
@@ -50,9 +71,12 @@ export interface Transaction {
   importedAt?: string;
   sourceFile?: string;
   isDuplicate?: boolean;
+  excludeReason?: ExcludeReason;
   splitFrom?: string;
   billId?: string;
 }
+
+export type BillPaymentMode = "SINGLE" | "MULTIPLE_ALLOWED";
 
 export interface Bill {
   id: string;
@@ -64,6 +88,7 @@ export interface Bill {
   month?: string;
   isPaid: boolean;
   paidMonths?: string[];
+  paymentMode?: BillPaymentMode;
   userId: string;
   createdAt: string;
   updatedAt: string;
@@ -119,6 +144,8 @@ export interface ImportPreviewItem {
   incomeCategory?: IncomeCategory;
   isDuplicate: boolean;
   duplicateOf?: string;
+  duplicateReason?: DuplicateReason;
+  duplicateConfidence?: "exact" | "fuzzy";
   ruleApplied?: string;
   action: "save" | "skip" | "review";
   recurringBill?: boolean;

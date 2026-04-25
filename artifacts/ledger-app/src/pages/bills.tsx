@@ -15,9 +15,19 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TransactionCategory, Transaction, Bill, DEFAULT_EXPENSE_CATEGORIES } from "@/lib/types";
+import {
+  isPaidInMonth,
+  findLinkedTransaction,
+  findPotentialDuplicates,
+  computeBillManagerReconciliation,
+  computeBillManagerMonthTotals,
+  buildMonthAuditReport,
+  filterAuditedTransactions,
+  filterTransactionsToCalendarMonth,
+  type MonthAuditOptions,
+} from "@/lib/billStatus";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
-import { isPaidInMonth, findLinkedTransaction } from "@/lib/billStatus";
 
 interface SuggestedBill {
   key: string;
@@ -259,7 +269,7 @@ function parseBillList(text: string): ParsedBill[] {
 
 const CATEGORIES: TransactionCategory[] = [
   "Bills", "Fuel", "Necessary", "Medical", "Shopping",
-  "Transfers", "Personal", "Waste", "Uncategorized",
+  "Transfers", "Personal", "Waste", "Work", "Uncategorized",
 ];
 
 const BLANK_FORM = {
@@ -294,18 +304,18 @@ function BillRow({ bill, compact = false, selectedMonth, todayDay, ledgerLinked,
         <span className={`font-mono text-xs font-bold block ${isOverdue ? "text-red-400" : isDueToday ? "text-yellow-400" : "text-primary"}`}>{formattedDate}</span>
       </div>
       <div className="flex-1 min-w-0">
-        <p className={`font-mono text-sm truncate ${paid ? "line-through text-muted-foreground" : ""}`} title={bill.name}>{bill.name}</p>
+        <p className={`font-mono text-sm truncate ${paid ? "line-through text-muted-foreground" : ""}`}>{bill.name}</p>
         {!compact && (
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className="text-[10px] text-muted-foreground font-mono uppercase">{bill.category}</span>
             {ledgerLinked && (
-              <span className="badge-recurring text-[10px] font-mono px-1.5 py-0.5 rounded flex items-center gap-0.5">
+              <span className="text-[10px] font-mono text-blue-400 bg-blue-500/10 px-1.5 rounded flex items-center gap-0.5">
                 <Link2 className="w-2.5 h-2.5" /> Ledger
               </span>
             )}
-            {isOverdue && <span className="badge-due text-[10px] font-mono px-1.5 py-0.5 rounded">OVERDUE</span>}
-            {isDueToday && <span className="badge-pending text-[10px] font-mono px-1.5 py-0.5 rounded">TODAY</span>}
-            {isDueSoon && <span className="badge-upcoming text-[10px] font-mono px-1.5 py-0.5 rounded">SOON</span>}
+            {isOverdue && <span className="text-[10px] font-mono text-red-400 bg-red-500/10 px-1 rounded">OVERDUE</span>}
+            {isDueToday && <span className="text-[10px] font-mono text-yellow-400 bg-yellow-500/10 px-1 rounded">TODAY</span>}
+            {isDueSoon && <span className="text-[10px] font-mono text-orange-400 bg-orange-500/10 px-1 rounded">SOON</span>}
           </div>
         )}
       </div>
@@ -357,6 +367,14 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const { data: allTxs } = useTransactions();
   // Selected month transactions used for Ledger ↔ Bill Manager link detection
   const { data: monthTxs, refetch: refetchMonthTxs } = useTransactions(selectedMonth);
+  const calendarMonthTxs = useMemo(
+    () => filterTransactionsToCalendarMonth(monthTxs || [], selectedMonth),
+    [monthTxs, selectedMonth],
+  );
+  const finalMonthTxs = useMemo(
+    () => filterAuditedTransactions(calendarMonthTxs),
+    [calendarMonthTxs],
+  );
   const addBill = useAddBill();
   const updateBill = useUpdateBill();
   const deleteBill = useDeleteBill();
@@ -393,7 +411,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const [editingBill, setEditingBill] = useState<Bill | null>(null);
   const [isTogglingUnpaid, setIsTogglingUnpaid] = useState(false);
   const [formData, setFormData] = useState(BLANK_FORM);
-  const [confirmAction, setConfirmAction] = useState<null | "fix" | "clear" | "markAllPaid">(null);
+  const [confirmAction, setConfirmAction] = useState<null | "fix" | "clear" | "markAllPaid" | "monthAudit">(null);
   const [isRunningBulk, setIsRunningBulk] = useState(false);
 
   const [recurringCollapsed, setRecurringCollapsed] = useState(false);
@@ -433,13 +451,13 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   // Map from bill.id → matching ledger transaction for the selected month
   const ledgerLinkedMap = useMemo(() => {
     const map = new Map<string, Transaction>();
-    if (!monthTxs || !bills) return map;
+    if (!finalMonthTxs.length || !bills) return map;
     for (const bill of bills) {
-      const linked = findLinkedTransaction(bill, monthTxs);
+      const linked = findLinkedTransaction(bill, finalMonthTxs);
       if (linked) map.set(bill.id, linked);
     }
     return map;
-  }, [bills, monthTxs]);
+  }, [bills, finalMonthTxs]);
 
   // True if a bill is paid either manually or via a matching ledger transaction
   const isEffectivelyPaid = useCallback(
@@ -447,9 +465,55 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     [selectedMonth, ledgerLinkedMap]
   );
 
-  const totalAmount = allMonthBills.reduce((s, b) => s + b.amount, 0);
-  const paidAmount = allMonthBills.filter(isEffectivelyPaid).reduce((s, b) => s + b.amount, 0);
-  const remaining = totalAmount - paidAmount;
+  const [overageOverrides, setOverageOverrides] = useState<string[]>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("overageOverrides") || "[]");
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .map((x: unknown) => {
+          if (typeof x !== "string") return "";
+          const t = x.trim();
+          if (!t) return "";
+          const colon = t.indexOf(":");
+          if (colon > 0 && /^[a-z]+$/i.test(t.slice(0, colon).trim())) return t.slice(0, colon).trim();
+          return t;
+        })
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem("overageOverrides", JSON.stringify(overageOverrides));
+  }, [overageOverrides]);
+  const recurringAllowedSet = useMemo(() => new Set(overageOverrides), [overageOverrides]);
+  const auditOptions = useMemo<MonthAuditOptions>(
+    () => ({ recurringOverageAllowedKeys: recurringAllowedSet }),
+    [recurringAllowedSet],
+  );
+  const billMonthTotals = useMemo(
+    () => computeBillManagerMonthTotals(bills || [], selectedMonth, finalMonthTxs, auditOptions),
+    [bills, selectedMonth, finalMonthTxs, auditOptions],
+  );
+  const reconciliation = useMemo(
+    () => computeBillManagerReconciliation(bills || [], selectedMonth, finalMonthTxs, auditOptions),
+    [bills, selectedMonth, finalMonthTxs, auditOptions],
+  );
+  const monthAudit = useMemo(
+    () => buildMonthAuditReport(finalMonthTxs, auditOptions),
+    [finalMonthTxs, auditOptions],
+  );
+  const effectiveOverages = monthAudit.recurringOverages.filter((o) => {
+    const key = o.split(":")[0]?.trim() ?? "";
+    return !overageOverrides.includes(key);
+  });
+  const hasValidationWarning =
+    Math.abs(reconciliation.dashboardSpending - monthAudit.auditedSpending) > 0.01 ||
+    reconciliation.unmatchedBills.length > 0 ||
+    effectiveOverages.length > 0;
+  const totalAmount = billMonthTotals.totalAmount;
+  const paidAmount = billMonthTotals.paidAmount;
+  const remaining = billMonthTotals.remainingAmount;
 
   const [pc1, pc2] = paycheckDays;
   const paycheckConfigured = pc1 > 0 && pc2 > 0 && pc1 !== pc2;
@@ -477,6 +541,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       month: selectedMonth,
       note: "Added from Bill Manager",
       billId: bill.id,
+      source: "linked_bill",
     } as any);
   };
 
@@ -494,50 +559,37 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       month: selectedMonth,
       note: "Added from Bill Manager",
       billId: bill.id,
+      source: "linked_bill",
     } as any);
   };
 
   const togglePaid = async (bill: Bill) => {
     const currentlyManuallyPaid = isPaidInMonth(bill, selectedMonth);
-    const linkedTx = ledgerLinkedMap.get(bill.id);
-    const currentlyPaid = currentlyManuallyPaid || !!linkedTx;
+    const currentlyLinked = ledgerLinkedMap.has(bill.id);
+    if (currentlyLinked) return; // Auto-paid via ledger — cannot toggle manually
 
-    if (currentlyPaid) {
-      // 1. Clear paidMonths flag
+    if (currentlyManuallyPaid) {
+      // Marking unpaid — write to Firestore; onSnapshot listener updates the UI automatically
       if (bill.isRecurring) {
-        await firestoreService.updateBill(user!.uid, bill.id, {
-          paidMonths: (bill.paidMonths ?? []).filter((m) => m !== selectedMonth),
-        });
+        const newPaidMonths = (bill.paidMonths ?? []).filter((m) => m !== selectedMonth);
+        await firestoreService.updateBill(user!.uid, bill.id, { paidMonths: newPaidMonths });
       } else {
         await firestoreService.updateBill(user!.uid, bill.id, { isPaid: false });
       }
-      // 2. Build name-word list for fuzzy matching
-      const billWords = bill.name
-        .toLowerCase()
-        .replace(/[^a-z0-9 ]/g, " ")
-        .split(" ")
-        .filter((w) => w.length >= 4);
-      // 3. Delete EVERY transaction in this month that is linked to this bill —
-      //    either by billId (Bill Manager entries) OR by name-word match (imported bank txs).
-      //    Both must be removed, otherwise the name-matched one keeps the bill green.
-      const allLinked = (monthTxs || []).filter((tx) => {
-        if (tx.billId === bill.id) return true;               // Bill Manager entry
-        if (tx.billId || tx.type === "income") return false;   // different bill or income
-        if (billWords.length === 0) return false;
-        return billWords.some((w) => tx.name.toLowerCase().includes(w)); // imported tx
-      });
-      for (const tx of allLinked) {
-        await firestoreService.deleteTransaction(user!.uid, tx.id);
+      const log = await firestoreService.getBillManagerLog(user!.uid, selectedMonth);
+      const txId = log[bill.id];
+      if (txId) {
+        await firestoreService.deleteTransaction(user!.uid, txId);
+        await firestoreService.removeBillManagerEntry(user!.uid, selectedMonth, bill.id);
+        toast({ description: `${bill.name} marked unpaid and ledger entry removed.` });
+      } else {
+        toast({ description: `${bill.name} marked unpaid.` });
       }
-      // 4. Clean up Bill Manager metadata log regardless
-      await firestoreService.removeBillManagerEntry(user!.uid, selectedMonth, bill.id);
-      toast({ description: `${bill.name} marked unpaid.${allLinked.length > 0 ? " Removed from ledger." : ""}` });
     } else {
-      // Marking paid
+      // Marking paid — write to Firestore; onSnapshot listener updates the UI automatically
       if (bill.isRecurring) {
-        await firestoreService.updateBill(user!.uid, bill.id, {
-          paidMonths: [...(bill.paidMonths ?? []), selectedMonth],
-        });
+        const newPaidMonths = [...(bill.paidMonths ?? []), selectedMonth];
+        await firestoreService.updateBill(user!.uid, bill.id, { paidMonths: newPaidMonths });
       } else {
         await firestoreService.updateBill(user!.uid, bill.id, { isPaid: true });
       }
@@ -575,12 +627,12 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           firestoreService.saveBillManagerEntry(user!.uid, selectedMonth, e.billId, e.txId!)
         )
       );
-      // Save snapshot of affected bill IDs so Undo All can revert only these bills
-      await firestoreService.saveMarkAllPaidAffectedBillIds(
-        user!.uid,
-        selectedMonth,
-        billsToMark.map((b) => b.id),
+      if (entries.some((entry) => entry.txId)) await firestoreService.recalculateMonthTotals(user!.uid, selectedMonth);
+      const prevAffected = await firestoreService.getMarkAllPaidAffectedBillIds(user!.uid, selectedMonth);
+      const mergedAffected = Array.from(
+        new Set([...(prevAffected ?? []), ...billsToMark.map((b) => b.id)])
       );
+      await firestoreService.saveMarkAllPaidAffectedBillIds(user!.uid, selectedMonth, mergedAffected);
       toast({ description: `${billsToMark.length} bill${billsToMark.length !== 1 ? "s" : ""} marked paid.` });
     } catch {
       toast({ description: "Something went wrong marking bills paid. Please try again." });
@@ -594,53 +646,53 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const markAllUnpaid = async () => {
     setIsUndoingAll(true);
     try {
-      // 1. Determine which bills to revert — use the snapshot from the last Mark All Paid run.
-      //    Legacy fallback: if no snapshot exists, revert all bills in the month.
-      const snapshotBillIds = await firestoreService.getMarkAllPaidAffectedBillIds(user!.uid, selectedMonth);
-      const billsToRevert = snapshotBillIds
-        ? allMonthBills.filter((b) => snapshotBillIds.includes(b.id))
-        : allMonthBills;
+      const snapshotAffected = await firestoreService.getMarkAllPaidAffectedBillIds(user!.uid, selectedMonth);
+      const billIds = new Set(allMonthBills.map((bill) => bill.id));
+      const log = await firestoreService.getBillManagerLog(user!.uid, selectedMonth);
 
-      // 2. Clear paidMonths / isPaid only for the bills that were marked by Mark All Paid
-      await Promise.all(
-        billsToRevert.map((bill) =>
-          bill.isRecurring
-            ? firestoreService.updateBill(user!.uid, bill.id, {
-                paidMonths: (bill.paidMonths ?? []).filter((m) => m !== selectedMonth),
-              })
-            : firestoreService.updateBill(user!.uid, bill.id, { isPaid: false })
-        )
-      );
-
-      // 3. Delete ALL ledger entries for each affected bill —
-      //    both Bill Manager entries (by billId) AND name-matched imported bank transactions.
-      //    Must mirror the same logic as togglePaid so imported txs don't keep bills green.
-      await Promise.all(
-        billsToRevert.map(async (bill) => {
-          const billWords = bill.name
-            .toLowerCase()
-            .replace(/[^a-z0-9 ]/g, " ")
-            .split(" ")
-            .filter((w) => w.length >= 4);
-          const allLinked = (monthTxs || []).filter((tx) => {
-            if (tx.billId === bill.id) return true;
-            if (tx.billId || tx.type === "income") return false;
-            if (billWords.length === 0) return false;
-            return billWords.some((w) => tx.name.toLowerCase().includes(w));
-          });
-          for (const tx of allLinked) {
-            await firestoreService.deleteTransaction(user!.uid, tx.id);
+      // 1. Only revert paid flags for bills that Mark All Paid actually touched — not bills
+      //    that were already paid for this month before Mark All (restores true previous state).
+      //    Legacy: no snapshot → revert bills that have Bill Manager log / auto-ledger rows only.
+      let revertIds: Set<string>;
+      if (snapshotAffected !== undefined) {
+        revertIds = new Set(snapshotAffected.filter((id) => billIds.has(id)));
+      } else {
+        revertIds = new Set(Object.keys(log));
+        for (const tx of monthTxs ?? []) {
+          if (tx.note === "Added from Bill Manager" && tx.billId && billIds.has(tx.billId)) {
+            revertIds.add(tx.billId);
           }
-          await firestoreService.removeBillManagerEntry(user!.uid, selectedMonth, bill.id);
-        })
+        }
+      }
+
+      await Promise.all(
+        allMonthBills
+          .filter((bill) => revertIds.has(bill.id))
+          .map((bill) =>
+            bill.isRecurring
+              ? firestoreService.updateBill(user!.uid, bill.id, {
+                  paidMonths: (bill.paidMonths ?? []).filter((m) => m !== selectedMonth),
+                })
+              : firestoreService.updateBill(user!.uid, bill.id, { isPaid: false })
+          )
       );
 
-      // 4. Clear the log and snapshot
+      // 2. Look up exact txIds from the log, then fall back to live Bill Manager ledger entries.
+      // Replit patches often only used the log; if that write missed, the ledger-linked rows kept bills looking paid.
+      const loggedTxIds = Object.values(log).filter(Boolean);
+      const liveBillManagerTxIds = (monthTxs ?? [])
+        .filter((tx) => tx.note === "Added from Bill Manager" && tx.billId && billIds.has(tx.billId))
+        .map((tx) => tx.id);
+      const txIds = Array.from(new Set([...loggedTxIds, ...liveBillManagerTxIds]));
+      await Promise.all(txIds.map((txId) => firestoreService.deleteTransaction(user!.uid, txId)));
       await firestoreService.clearBillManagerMonth(user!.uid, selectedMonth);
       await firestoreService.clearMarkAllPaidSnapshot(user!.uid, selectedMonth);
+      if (txIds.length > 0) await firestoreService.recalculateMonthTotals(user!.uid, selectedMonth);
 
       toast({
-        description: `Undone. ${billsToRevert.length} bill${billsToRevert.length !== 1 ? "s" : ""} marked unpaid.`,
+        description: txIds.length > 0
+          ? `Undone. Removed ${txIds.length} ledger entr${txIds.length === 1 ? "y" : "ies"}.`
+          : "Bills marked unpaid.",
       });
     } finally {
       setIsUndoingAll(false);
@@ -693,10 +745,25 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
 
   const handleSave = () => {
     if (!formData.name || !formData.amount) return;
+    const dueDay = parseInt(formData.dueDay);
+    const date = `${selectedMonth}-${String(dueDay).padStart(2, "0")}`;
+    const amount = Math.abs(parseFloat(formData.amount));
+    const potentialDuplicates = findPotentialDuplicates(
+      { name: formData.name, amount, date, category: formData.category },
+      calendarMonthTxs,
+    );
+    if (!editingId && potentialDuplicates.length > 0) {
+      toast({
+        variant: "destructive",
+        title: "Possible duplicate bill",
+        description: `Found ${potentialDuplicates.length} similar transaction${potentialDuplicates.length !== 1 ? "s" : ""} within 5 days. Link to existing ledger activity instead of adding another bill.`,
+      });
+      return;
+    }
     const payload = {
       name: formData.name,
-      amount: Math.abs(parseFloat(formData.amount)),
-      dueDay: parseInt(formData.dueDay),
+      amount,
+      dueDay,
       category: formData.category,
       isRecurring: formData.isRecurring,
       isPaid: false,
@@ -765,6 +832,33 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     toast({ description: "All bills cleared." });
   };
 
+  const runMonthAuditCleanup = async () => {
+    if (!monthTxs) return;
+    setIsRunningBulk(true);
+    setConfirmAction(null);
+    try {
+      const report = buildMonthAuditReport(finalMonthTxs);
+      const toDelete = new Set([
+        ...report.duplicateCandidateIds,
+        ...report.splitComponentIds,
+        ...report.duplicateIncomeCandidateIds,
+      ]);
+
+      for (const txId of toDelete) {
+        await deleteTx.mutateAsync({ id: txId, month: selectedMonth });
+      }
+      await firestoreService.recalculateMonthTotals(user!.uid, selectedMonth);
+      toast({
+        title: "Month audit applied",
+        description: `Removed ${toDelete.size} flagged transaction${toDelete.size !== 1 ? "s" : ""} for ${selectedMonth}.`,
+      });
+    } catch {
+      toast({ variant: "destructive", description: "April cleanup failed. Try again." });
+    } finally {
+      setIsRunningBulk(false);
+    }
+  };
+
   const openPaycheckSetup = () => {
     setPcInput([pc1 > 0 ? String(pc1) : "", pc2 > 0 ? String(pc2) : ""]);
     setPaycheckOpen(true);
@@ -791,40 +885,55 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between gap-4">
+      <div className="flex flex-col sm:flex-row justify-between gap-4 surface-tech-strong p-5 sm:p-6 rounded-xl">
         <div>
-          <div className="flex items-baseline gap-3">
-            <h2 className="text-xl font-bold font-mono tracking-tight uppercase">Bill Manager</h2>
-            <span className="text-primary font-mono text-xs">{selectedMonth}</span>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="h-1 w-8 rounded-full bg-gradient-to-r from-primary to-emerald-400 shadow-[0_0_12px_hsl(187_100%_50%_/_.5)]" />
+            <span className="text-[10px] font-mono uppercase tracking-[0.35em] text-muted-foreground">Billing</span>
           </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
-            <span className="font-mono text-xs text-muted-foreground">Paid: <span className="text-green-400 font-bold">${paidAmount.toFixed(2)}</span></span>
-            <span className="font-mono text-xs text-muted-foreground">Left: <span className="text-red-400 font-bold">${remaining.toFixed(2)}</span></span>
-            <span className="font-mono text-xs text-muted-foreground">Total: <span className="text-primary font-bold">${totalAmount.toFixed(2)}</span></span>
-          </div>
+          <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-[0.12em] uppercase text-glow-cyan">
+            Bill Manager
+          </h2>
+          <p className="text-muted-foreground font-mono text-xs sm:text-sm mt-2">
+            <span className="text-primary font-semibold">{selectedMonth}</span>
+            {" · "}
+            Bills Paid: <span className="text-emerald-400 tabular-nums">${paidAmount.toFixed(2)}</span>
+            {" · "}
+            Remaining: <span className="text-red-400 tabular-nums">${remaining.toFixed(2)}</span>
+            {" · "}
+            Total: <span className="text-primary tabular-nums">${totalAmount.toFixed(2)}</span>
+          </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="secondary" onClick={openPaycheckSetup} className="font-mono text-xs uppercase tracking-wider">
+          <Button variant="outline" onClick={openPaycheckSetup} className="font-mono text-xs uppercase tracking-wider">
             <Settings2 className="h-4 w-4 mr-2" /> Paycheck
           </Button>
-          <Button variant="secondary" onClick={handleScan} className="font-mono text-xs uppercase tracking-wider">
+          <Button variant="outline" onClick={handleScan} className="font-mono text-xs uppercase tracking-wider">
             <ScanSearch className="h-4 w-4 mr-2" /> Detect
           </Button>
           {(bills || []).length > 0 && (
-            <Button onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="btn-orange font-mono text-xs uppercase tracking-wider">
+            <Button variant="outline" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
               {isRunningBulk ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wrench className="h-4 w-4 mr-2" />}
               Fix Types
             </Button>
           )}
           {(bills || []).length > 0 && (
-            <Button variant="destructive" onClick={() => setConfirmAction("clear")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider">
+            <Button variant="outline" onClick={() => setConfirmAction("clear")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider border-red-500/40 text-red-400 hover:bg-red-500/10">
               <Trash className="h-4 w-4 mr-2" /> Clear All
             </Button>
           )}
           <Button
-            variant="secondary"
+            variant="outline"
+            onClick={() => setConfirmAction("monthAudit")}
+            disabled={isRunningBulk}
+            className="font-mono text-xs uppercase tracking-wider border-orange-500/40 text-orange-300 hover:bg-orange-500/10"
+          >
+            <RefreshCw className="h-4 w-4 mr-2" /> Month Audit Fix
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => { setPasteText(""); setParsedBills([]); setPasteOpen(true); }}
-            className="font-mono text-xs uppercase tracking-wider"
+            className="font-mono text-xs uppercase tracking-wider border-primary/40 text-primary hover:bg-primary/10"
           >
             <ClipboardList className="h-4 w-4 mr-2" /> Paste List
           </Button>
@@ -834,12 +943,114 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
         </div>
       </div>
 
+      <Card className="surface-tech border-orange-500/25">
+        <CardHeader className="pb-2">
+          <CardTitle className="font-mono text-xs uppercase tracking-wider text-orange-300">Bills Reconciliation</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 font-mono text-xs">
+            <p>Dashboard Total Spending: <span className="text-primary">${reconciliation.dashboardSpending.toFixed(2)}</span></p>
+            <p>Bill Manager Paid: <span className="text-emerald-400">${reconciliation.paidAmount.toFixed(2)}</span></p>
+            <p>Bill Manager Remaining: <span className="text-red-400">${reconciliation.remainingAmount.toFixed(2)}</span></p>
+            <p>Bill Manager Total: <span className="text-primary">${reconciliation.totalAmount.toFixed(2)}</span></p>
+            <p>Clean Bill Tx Count: <span className="text-cyan-300">{reconciliation.cleanBillTransactions.length}</span></p>
+            <p>Paid vs Dashboard Diff: <span className="text-yellow-300">${(reconciliation.paidAmount - reconciliation.dashboardSpending).toFixed(2)}</span></p>
+          </div>
+          {hasValidationWarning && (
+            <p className="text-xs font-mono text-red-300">
+              Financial data not fully validated.
+            </p>
+          )}
+          {reconciliation.warning && (
+            <p className="text-xs font-mono text-yellow-300">
+              Unmatched manual bills found — review before totals are trusted.
+            </p>
+          )}
+          {monthAudit.recurringOverageRows.length > 0 && (
+            <div className="space-y-2 border border-yellow-500/20 rounded p-2">
+              <p className="text-[10px] font-mono uppercase text-yellow-300">Recurring Overages</p>
+              {monthAudit.recurringOverageRows.map((row) => {
+                const label =
+                  monthAudit.recurringOverages.find((o) => o.startsWith(`${row.key}:`)) ?? `${row.key} over limit`;
+                const overridden = overageOverrides.includes(row.key);
+                const culpritTxs = row.txIds
+                  .map((id) => (monthTxs || []).find((t) => t.id === id) ?? calendarMonthTxs.find((t) => t.id === id))
+                  .filter((t): t is Transaction => !!t);
+                return (
+                  <div key={row.key} className="space-y-1 text-[11px] font-mono">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={overridden ? "text-muted-foreground line-through" : "text-yellow-200"}>
+                        {label}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 shrink-0 px-2 text-[10px] font-mono"
+                        onClick={() => {
+                          setOverageOverrides((prev) =>
+                            overridden ? prev.filter((x) => x !== row.key) : [...prev, row.key],
+                          );
+                        }}
+                      >
+                        {overridden ? "Undo Override" : "Allow multiple charges this month"}
+                      </Button>
+                    </div>
+                    {culpritTxs.length > 0 && (
+                      <ul className="pl-2 text-[10px] text-muted-foreground space-y-0.5 border-l border-yellow-500/20 ml-1">
+                        {culpritTxs.map((t) => (
+                          <li key={t.id}>
+                            {t.date} · {t.name} · ${Math.abs(t.amount).toFixed(2)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="max-h-24 overflow-y-auto space-y-1">
+            {reconciliation.unmatchedBills.slice(0, 8).map((bill) => (
+              <p key={bill.id} className="text-[11px] font-mono text-muted-foreground">
+                {String(bill.dueDay).padStart(2, "0")} · {bill.name} · ${bill.amount.toFixed(2)}
+              </p>
+            ))}
+            {reconciliation.unmatchedBills.length === 0 && (
+              <p className="text-[11px] font-mono text-emerald-400">No unmatched bills.</p>
+            )}
+          </div>
+          <div className="border-t border-border/40 pt-2">
+            <p className="text-[10px] font-mono uppercase text-muted-foreground mb-1">Per-bill Status</p>
+            <div className="max-h-32 overflow-y-auto space-y-1">
+              {reconciliation.billStatuses.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-2 text-[11px] font-mono">
+                  <span className="truncate text-muted-foreground">
+                    {item.mode} · {item.label}
+                  </span>
+                  <span
+                    className={
+                      item.status === "PAID"
+                        ? "text-emerald-400"
+                        : item.status === "UNDERPAID"
+                          ? "text-yellow-300"
+                          : "text-red-300"
+                    }
+                  >
+                    {item.status} (${item.paidAmount.toFixed(2)} / ${item.expectedAmount.toFixed(2)})
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Progress bar */}
       {allMonthBills.length > 0 && (
-        <div className="space-y-2">
-          <div className="w-full bg-muted rounded-full h-2">
+        <div className="space-y-2 surface-tech p-4 rounded-xl">
+          <div className="progress-tech">
             <div
-              className="h-2 rounded-full bg-green-500 transition-all"
+              className="progress-tech-fill"
               style={{ width: `${totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0}%` }}
             />
           </div>
@@ -862,7 +1073,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
 
       {/* Bill sections — shown FIRST so they're immediately visible */}
       {allMonthBills.length === 0 ? (
-        <Card className="border-dashed border-2 border-border">
+        <Card className="border-dashed border-2 border-cyan-500/25 bg-card/30 backdrop-blur-md">
           <CardContent className="flex flex-col items-center justify-center py-12 gap-4 text-center">
             <ScanSearch className="w-10 h-10 text-muted-foreground" />
             {(bills || []).some((b) => !b.isRecurring) ? (
@@ -881,11 +1092,11 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             )}
             <div className="flex gap-2 flex-wrap justify-center">
               {(bills || []).some((b) => !b.isRecurring) && (
-                <Button size="sm" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="btn-orange font-mono text-xs uppercase">
+                <Button variant="outline" size="sm" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="font-mono text-xs uppercase border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
                   <Wrench className="h-3.5 w-3.5 mr-2" /> Fix Types Now
                 </Button>
               )}
-              <Button variant="secondary" size="sm" onClick={handleScan} className="font-mono text-xs uppercase">
+              <Button variant="outline" size="sm" onClick={handleScan} className="font-mono text-xs uppercase">
                 <ScanSearch className="h-3.5 w-3.5 mr-2" /> Detect Bills
               </Button>
               <Button size="sm" onClick={() => { setFormData(BLANK_FORM); setEditingId(null); setIsDialogOpen(true); }} className="font-mono text-xs uppercase">
@@ -897,8 +1108,8 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
       ) : (
         <div className="space-y-4">
           {/* SECTION 1: Monthly Recurring */}
-          <Card className="border-border">
-            <div className="border-b border-border">
+          <Card className="surface-tech overflow-hidden">
+            <div className="border-b border-cyan-500/15">
               <SectionHeader
                 title="Monthly Recurring"
                 count={recurringBills.length}
@@ -922,8 +1133,8 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           </Card>
 
           {/* SECTION 2: Month-Specific */}
-          <Card className="border-border">
-            <div className="border-b border-border">
+          <Card className="surface-tech overflow-hidden">
+            <div className="border-b border-cyan-500/15">
               <SectionHeader
                 title={`This Month Only — ${selectedMonth}`}
                 count={monthSpecificBills.length}
@@ -958,7 +1169,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             const wTotal = wBills.reduce((s, b) => s + b.amount, 0);
             const wPaid = wBills.filter(isEffectivelyPaid).reduce((s, b) => s + b.amount, 0);
             return (
-              <Card key={label} className={`border-2 ${color}`}>
+              <Card key={label} className={`surface-tech border-2 ${color} backdrop-blur-xl`}>
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start">
                     <CardTitle className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{label}</CardTitle>
@@ -1050,6 +1261,25 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             >
               {isRunningBulk ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ScanSearch className="w-4 h-4 mr-2" />}
               Clear &amp; Re-detect
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm: Month Audit */}
+      <Dialog open={confirmAction === "monthAudit"} onOpenChange={(o) => !o && setConfirmAction(null)}>
+        <DialogContent className="sm:max-w-[450px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-orange-300 tracking-wider text-sm">Apply Month Cleanup?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm font-mono text-muted-foreground">
+            This scans {selectedMonth} for likely duplicate spend rows and removes duplicate copies, then recalculates totals.
+          </p>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setConfirmAction(null)} className="font-mono text-xs uppercase">Cancel</Button>
+            <Button onClick={runMonthAuditCleanup} disabled={isRunningBulk} className="font-mono text-xs uppercase bg-orange-500/20 text-orange-300 border border-orange-500/40 hover:bg-orange-500/30">
+              {isRunningBulk ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+              Apply Cleanup
             </Button>
           </div>
         </DialogContent>
@@ -1155,10 +1385,10 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           </div>
           {(() => {
             const liveBill = editingId ? allMonthBills.find((b) => b.id === editingId) : null;
-            const isCurrentlyPaid = liveBill ? isEffectivelyPaid(liveBill) : false;
+            const isManuallyPaid = liveBill ? isPaidInMonth(liveBill, selectedMonth) : false;
             return (
               <div className="flex justify-between gap-2 flex-wrap">
-                {isCurrentlyPaid && (
+                {isManuallyPaid && (
                   <Button
                     variant="outline"
                     disabled={isTogglingUnpaid}

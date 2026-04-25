@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useTransactions, useRules, useBulkAddTransactions, useAddBill, useCustomCategories, useSaveCustomCategories } from "@/hooks/use-finance";
 import { CategorySelect } from "@/components/ui/CategorySelect";
-import { parseCSV } from "@/lib/csvParser";
-import { runRulesEngine } from "@/lib/rulesEngine";
+import { parseCSVWithDiagnostics } from "@/lib/csvParser";
+import { runRulesEngine, getSafeImportLabel, type SafeImportLabel } from "@/lib/rulesEngine";
 import { ImportPreviewItem, INCOME_CATEGORIES } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,7 @@ const EXPENSE_CATEGORIES = [
   "Transfers",
   "Personal",
   "Waste",
+  "Work",
   "Uncategorized",
 ];
 
@@ -127,18 +128,45 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
   const handleCSVChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.name.endsWith(".csv")) {
-      toast({ variant: "destructive", title: "Invalid file", description: "Please upload a CSV file." });
+    // Case-insensitive extension check — Wells Fargo and some macOS exports use ".CSV".
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith(".csv") && !lowerName.endsWith(".tsv") && !lowerName.endsWith(".txt")) {
+      toast({
+        variant: "destructive",
+        title: "Invalid file",
+        description: `Got "${file.name}". Please upload a .csv (or .tsv/.txt export from your bank).`,
+      });
+      // Reset so selecting the same file again will still fire onChange.
+      if (csvInputRef.current) csvInputRef.current.value = "";
       return;
     }
     setParsing(true);
     try {
-      const rows = await parseCSV(file);
+      const result = await parseCSVWithDiagnostics(file);
       // Yield to the browser before running the synchronous rules engine
       // so the UI stays responsive even with large files
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      const processed = runRulesEngine(rows, userRules || [], recentTxsForDupeCheck);
+
+      if (result.rows.length === 0) {
+        // Show a useful diagnostic instead of silently doing nothing.
+        const desc =
+          result.detectedFormat === "unknown"
+            ? `File parsed (${result.rawRowCount} raw lines) but no Date/Amount/Description columns recognised. First row: ${
+                result.firstRawRow ? JSON.stringify(result.firstRawRow).slice(0, 140) : "empty"
+              }`
+            : result.detectedFormat === "header_row"
+              ? `Recognised headers (${(result.detectedHeaders ?? []).join(", ") || "?"}) but every row was blank, zero-amount, or missing date/name (${result.rawRowCount} raw lines).`
+              : `Detected Wells Fargo layout but no rows had a date + amount + description (${result.rawRowCount} raw lines).`;
+        toast({ variant: "destructive", title: "0 transactions parsed", description: desc });
+        return;
+      }
+
+      const processed = runRulesEngine(result.rows, userRules || [], recentTxsForDupeCheck);
       setPreviewItems(processed);
+      toast({
+        title: `Parsed ${result.rows.length} rows`,
+        description: `Format: ${result.detectedFormat === "wells_fargo_5col" ? "Wells Fargo (no header)" : result.detectedFormat === "header_row" ? "Header row" : "Unknown"} \u2192 review preview below.`,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Parse failed";
       toast({ variant: "destructive", title: "Parse Error", description: msg });
@@ -238,10 +266,21 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
 
       const processed = runRulesEngine(parsedRows, userRules || [], recentTxsForDupeCheck);
 
-      const withConfidence = processed.map((item, i) => ({
-        ...item,
-        status: parsedRows[i]?.confidence === "low" ? ("review" as const) : item.status,
-      }));
+      // Key by transaction identity — runRulesEngine can drop rows (e.g. skip rules), so index i ≠ parsedRows[i]
+      const confidenceByKey = new Map(
+        parsedRows.map((p) => [
+          `${p.date}|${p.name.toLowerCase().trim()}|${p.amount}|${p.txType}`,
+          p.confidence,
+        ])
+      );
+      const withConfidence = processed.map((item) => {
+        const key = `${item.date}|${item.name.toLowerCase().trim()}|${item.amount}|${item.txType}`;
+        const conf = confidenceByKey.get(key);
+        return {
+          ...item,
+          status: conf === "low" ? ("review" as const) : item.status,
+        };
+      });
 
       setPreviewItems(withConfidence);
       setAiStage("done");
@@ -289,33 +328,8 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
     setPreviewItems((items) => items.map((it) => (it.id === id ? { ...it, recurringBill } : it)));
   };
 
-  /**
-   * Normalize any date string to YYYY-MM-DD for consistent storage & sorting.
-   * Handles MM/DD/YYYY (from AI parser) and YYYY-MM-DD (from CSV parser).
-   */
-  const toISODate = (raw: string): string => {
-    if (!raw) return raw;
-    const trimmed = raw.trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-    const mdy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-    if (mdy) {
-      const [, m, d, y] = mdy;
-      const fullYear = y.length === 2 ? `20${y}` : y;
-      return `${fullYear}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-    }
-    return trimmed;
-  };
-
-  /** Extract YYYY-MM from a normalized ISO date string. */
-  const monthFromISO = (isoDate: string): string => {
-    const m = isoDate.match(/^(\d{4}-\d{2})/);
-    return m ? m[1] : selectedMonth;
-  };
-
   const parseDueDayFromDate = (date: string): number => {
     try {
-      // Handle both YYYY-MM-DD and MM/DD/YYYY
-      if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return parseInt(date.split("-")[2], 10) || 1;
       const parts = date.split("/");
       if (parts.length >= 2) return parseInt(parts[1], 10) || 1;
     } catch { /* noop */ }
@@ -330,10 +344,19 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
     }
 
     const payload = toSave.map((it) => {
-      const isoDate = toISODate(it.date);
-      const month = monthFromISO(isoDate) || selectedMonth;
+      let month = selectedMonth;
+      try {
+        const parts = it.date.split("/");
+        if (parts.length === 3) {
+          const m = parts[0].padStart(2, "0");
+          const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+          month = `${y}-${m}`;
+        }
+      } catch {
+        month = selectedMonth;
+      }
       return {
-        date: isoDate,
+        date: it.date,
         name: it.name,
         amount: it.amount,
         category: it.resolvedCategory,
@@ -341,10 +364,21 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
         type: it.txType,
         month,
         isDuplicate: it.isDuplicate ?? false,
+        source: "imported_bank_transaction" as const,
         ...(it.txType === "income" && it.incomeCategory ? { incomeCategory: it.incomeCategory } : {}),
         ...(it.ruleApplied ? { ruleApplied: it.ruleApplied } : {}),
       };
     });
+
+    const duplicateWarnings = toSave.filter((it) => it.isDuplicate).length;
+    if (duplicateWarnings > 0) {
+      toast({
+        variant: "destructive",
+        title: "Duplicate warning",
+        description: `${duplicateWarnings} selected import row${duplicateWarnings !== 1 ? "s look" : " looks"} like duplicates. Mark as Skip or Review before importing to avoid double counting.`,
+      });
+      return;
+    }
 
     const recurringItems = toSave.filter((it) => it.recurringBill && it.txType === "expense");
 
@@ -408,11 +442,23 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
   const totalExpense = expenseItems.filter((i) => i.action === "save").reduce((s, i) => s + i.amount, 0);
   const recurringCount = previewItems.filter((i) => i.recurringBill && i.action === "save").length;
 
+  // Safe-import label tally (used for the import preview header)
+  const labelCounts = previewItems.reduce(
+    (acc, it) => {
+      const lbl = getSafeImportLabel(it);
+      acc[lbl] = (acc[lbl] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<SafeImportLabel, number>,
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold font-mono tracking-tight uppercase">Data Import</h2>
+          <h2 className="font-display text-2xl font-bold tracking-[0.15em] uppercase text-primary text-glow-cyan">
+            Data Import
+          </h2>
           <p className="text-muted-foreground font-mono text-sm mt-1">
             Target Month: <span className="text-primary">{selectedMonth}</span>
           </p>
@@ -449,17 +495,26 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
           </div>
 
           {mode === "csv" ? (
-            <Card className="border-border border-dashed">
+            <Card className="surface-tech border-dashed border-cyan-500/30">
               <CardContent className="flex flex-col items-center justify-center h-52 space-y-4">
-                <div className="w-14 h-14 rounded-full bg-secondary flex items-center justify-center">
-                  <FileSpreadsheet className="w-7 h-7 text-muted-foreground" />
+                <div className="w-14 h-14 rounded-full bg-primary/10 border border-cyan-500/25 flex items-center justify-center shadow-[0_0_24px_-8px_hsl(187_100%_50%_/_.35)]">
+                  <FileSpreadsheet className="w-7 h-7 text-primary" />
                 </div>
                 <p className="text-sm text-muted-foreground font-mono text-center max-w-xs">
                   Upload your bank's CSV export. Rules engine will auto-categorize and flag duplicates.
                 </p>
-                <input type="file" accept=".csv" className="hidden" ref={csvInputRef} onChange={handleCSVChange} />
+                <input
+                  type="file"
+                  accept=".csv,.CSV,.tsv,.TSV,.txt,.TXT,text/csv,text/tab-separated-values"
+                  className="hidden"
+                  ref={csvInputRef}
+                  onChange={handleCSVChange}
+                />
                 <Button
-                  onClick={() => csvInputRef.current?.click()}
+                  onClick={() => {
+                    if (csvInputRef.current) csvInputRef.current.value = "";
+                    csvInputRef.current?.click();
+                  }}
                   disabled={parsing}
                   className="font-mono uppercase text-xs tracking-wider"
                 >
@@ -469,11 +524,11 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
               </CardContent>
             </Card>
           ) : (
-            <Card className="border-border border-dashed">
+            <Card className="surface-tech border-dashed border-cyan-500/30">
               <CardContent className="flex flex-col items-center justify-center h-52 space-y-4">
                 {isAnalyzing ? (
                   <>
-                    <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+                    <div className="w-14 h-14 rounded-full bg-primary/15 border border-cyan-500/30 flex items-center justify-center shadow-[0_0_28px_-6px_hsl(187_100%_50%_/_.45)]">
                       <Sparkles className="w-7 h-7 text-primary animate-pulse" />
                     </div>
                     <div className="text-center font-mono space-y-1">
@@ -494,8 +549,8 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                   </>
                 ) : (
                   <>
-                    <div className="w-14 h-14 rounded-full bg-secondary flex items-center justify-center">
-                      <Camera className="w-7 h-7 text-muted-foreground" />
+                    <div className="w-14 h-14 rounded-full bg-primary/10 border border-cyan-500/20 flex items-center justify-center">
+                      <Camera className="w-7 h-7 text-primary/80" />
                     </div>
                     <p className="text-sm text-muted-foreground font-mono text-center max-w-xs">
                       Upload a PDF or screenshot. AI extracts both income and expenses, categorized by source.
@@ -591,10 +646,57 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
             </div>
           </div>
 
-          <Card className="border-border">
+          {/* Safe-import label tally — shows the user how the dedup engine bucketed each row */}
+          <div className="flex flex-wrap gap-2 text-[11px] font-mono">
+            {(["NEW_SAFE_TO_IMPORT", "EXACT_DUPLICATE_SKIP", "POSTING_DATE_MATCH_REVIEW", "POSSIBLE_DUPLICATE_REVIEW", "CONFLICT_REVIEW"] as SafeImportLabel[]).map((lbl) => {
+              const n = labelCounts[lbl] ?? 0;
+              const styles =
+                lbl === "NEW_SAFE_TO_IMPORT"
+                  ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                  : lbl === "EXACT_DUPLICATE_SKIP"
+                  ? "bg-red-500/10 text-red-300 border-red-500/30"
+                  : lbl === "POSTING_DATE_MATCH_REVIEW"
+                  ? "bg-yellow-500/10 text-yellow-300 border-yellow-500/30"
+                  : lbl === "POSSIBLE_DUPLICATE_REVIEW"
+                  ? "bg-orange-500/10 text-orange-300 border-orange-500/30"
+                  : "bg-purple-500/10 text-purple-300 border-purple-500/30";
+              return (
+                <div
+                  key={lbl}
+                  className={`px-2 py-1 rounded border ${styles} ${n === 0 ? "opacity-40" : ""}`}
+                  title={
+                    lbl === "NEW_SAFE_TO_IMPORT"
+                      ? "No duplicate signal — safe to import"
+                      : lbl === "EXACT_DUPLICATE_SKIP"
+                      ? "Exact match exists in your ledger — recommended to skip"
+                      : lbl === "POSTING_DATE_MATCH_REVIEW"
+                      ? "Same amount and merchant 1–2 days apart (posting date offset). Review before import."
+                      : lbl === "POSSIBLE_DUPLICATE_REVIEW"
+                      ? "Possible duplicate (income or batch). Confirm manually."
+                      : "Conflict: same amount/date but mismatched name or pending vs posted."
+                  }
+                >
+                  {lbl} <span className="font-bold">{n}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <Card className="surface-tech">
             <div className="divide-y divide-border/50">
               {visibleItems.map((item) => {
                 const isIncome = item.txType === "income";
+                const safeLabel = getSafeImportLabel(item);
+                const labelStyles =
+                  safeLabel === "NEW_SAFE_TO_IMPORT"
+                    ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40"
+                    : safeLabel === "EXACT_DUPLICATE_SKIP"
+                    ? "bg-red-500/15 text-red-300 border-red-500/40"
+                    : safeLabel === "POSTING_DATE_MATCH_REVIEW"
+                    ? "bg-yellow-500/15 text-yellow-300 border-yellow-500/40"
+                    : safeLabel === "POSSIBLE_DUPLICATE_REVIEW"
+                    ? "bg-orange-500/15 text-orange-300 border-orange-500/40"
+                    : "bg-purple-500/15 text-purple-300 border-purple-500/40";
                 return (
                   <div
                     key={item.id}
@@ -626,6 +728,22 @@ export default function ImportPage({ selectedMonth, onMonthChange }: { selectedM
                               <AlertTriangle className="w-2.5 h-2.5" /> Duplicate
                             </span>
                           )}
+                          <span
+                            className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border ${labelStyles}`}
+                            title={
+                              safeLabel === "EXACT_DUPLICATE_SKIP"
+                                ? `Exact duplicate of an existing row${item.duplicateOf ? ` (${item.duplicateOf.slice(0, 8)})` : ""}`
+                                : safeLabel === "POSTING_DATE_MATCH_REVIEW"
+                                ? "Same amount + first-word merchant match within 1–2 days. Suspected posting-date offset."
+                                : safeLabel === "POSSIBLE_DUPLICATE_REVIEW"
+                                ? "Possible income duplicate or batch-internal duplicate"
+                                : safeLabel === "CONFLICT_REVIEW"
+                                ? "Conflict — review manually before import"
+                                : "Safe to import"
+                            }
+                          >
+                            {safeLabel}
+                          </span>
                         </div>
                         <div className="font-medium truncate" title={item.name}>{item.name}</div>
                         {item.ruleApplied && (

@@ -9,17 +9,24 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Loader2, Plus, PlusCircle, Search, Download, Edit2, Trash2, ScanSearch,
-  AlertTriangle, Scissors, X, CalendarDays,
+  AlertTriangle, Scissors, X, CalendarDays, TrendingUp,
 } from "lucide-react";
 import { CategorySelect } from "@/components/ui/CategorySelect";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TransactionStatus, Transaction, DEFAULT_EXPENSE_CATEGORIES } from "@/lib/types";
+import { TransactionStatus, Transaction, DEFAULT_EXPENSE_CATEGORIES, IncomeCategory } from "@/lib/types";
 import { exportToCSV } from "@/lib/csvParser";
 import { getMonthKey, formatMonthLabel } from "@/lib/rulesEngine";
 import { buildMonthOptions } from "@/lib/monthNav";
+import {
+  detectLikelyDuplicates,
+  findPotentialDuplicates,
+  computeAuditedMonthTotals,
+  filterTransactionsToCalendarMonth,
+} from "@/lib/billStatus";
+import { useToast } from "@/hooks/use-toast";
 
 const BASE_CATEGORY_COLORS: Record<string, string> = {
   Bills: "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -30,6 +37,7 @@ const BASE_CATEGORY_COLORS: Record<string, string> = {
   Transfers: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
   Personal: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   Waste: "bg-red-500/20 text-red-400 border-red-500/30",
+  Work: "bg-violet-500/20 text-violet-300 border-violet-500/30",
   Uncategorized: "bg-gray-500/20 text-gray-400 border-gray-500/30",
 };
 
@@ -52,6 +60,17 @@ interface SplitRow {
   label: string;
   amount: string;
   category: string;
+}
+
+interface DuplicateGroup {
+  id: string;
+  transactions: Transaction[];
+  suggestedDeleteIds: Set<string>;
+}
+
+interface IncomeReclassCandidate {
+  tx: Transaction;
+  suggestedIncomeCategory: IncomeCategory;
 }
 
 interface SplitDialogProps {
@@ -197,11 +216,16 @@ export default function LedgerPage({
   const addTx = useAddTransaction();
   const updateTx = useUpdateTransaction();
   const deleteTx = useDeleteTransaction();
+  const { toast } = useToast();
 
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState<string>("all");
   const [dupDialogOpen, setDupDialogOpen] = useState(false);
   const [removingDups, setRemovingDups] = useState(false);
+  const [selectedDuplicateIds, setSelectedDuplicateIds] = useState<Set<string>>(new Set());
+  const [incomeReclassOpen, setIncomeReclassOpen] = useState(false);
+  const [reclassifyingIncome, setReclassifyingIncome] = useState(false);
+  const [selectedIncomeIds, setSelectedIncomeIds] = useState<Set<string>>(new Set());
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -220,20 +244,45 @@ export default function LedgerPage({
     saveCustomCats.mutate(next);
   };
 
-  const duplicateGroups = useMemo(() => {
-    const all = allTransactions || [];
-    const groups: Record<string, Transaction[]> = {};
-    for (const tx of all) {
-      const key = `${tx.date}|${tx.name.toLowerCase().trim()}|${Math.abs(tx.amount).toFixed(2)}`;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(tx);
-    }
-    return Object.values(groups).filter((g) => g.length > 1);
-  }, [allTransactions]);
-
-  const txs = transactions ?? [];
-
   const monthKey = selectedMonth || getMonthKey(new Date());
+  const txs = useMemo(
+    () => filterTransactionsToCalendarMonth(transactions ?? [], monthKey),
+    [transactions, monthKey],
+  );
+
+  const duplicateGroups = useMemo<DuplicateGroup[]>(
+    () => detectLikelyDuplicates(allTransactions || []).map((g) => ({
+      id: g.id,
+      transactions: g.transactions,
+      suggestedDeleteIds: new Set(g.suggestedDeleteIds),
+    })),
+    [allTransactions],
+  );
+
+  const likelyIncomeCandidates = useMemo<IncomeReclassCandidate[]>(() => {
+    const suggest = (name: string): IncomeCategory => {
+      const n = name.toLowerCase();
+      if (n.includes("payroll") || n.includes("direct dep") || n.includes("salary") || n.includes("adp")) return "Payroll";
+      if (n.includes("cash app") || n.includes("venmo") || n.includes("zelle")) return "Cash Transfer";
+      if (n.includes("uber") || n.includes("doordash") || n.includes("instacart")) return "Gig Work";
+      if (n.includes("shop") || n.includes("stripe") || n.includes("square")) return "Side Business";
+      return "Other Income";
+    };
+    const depositHints = [
+      "deposit", "direct dep", "payroll", "salary", "ach credit", "credit from",
+      "refund", "reimbursement", "zelle", "venmo", "cash app",
+    ];
+    return txs
+      .filter((tx) => (!tx.type || tx.type === "expense"))
+      .filter((tx) => !tx.splitFrom && tx.status === "cleared")
+      .filter((tx) => Math.abs(tx.amount) >= 100)
+      .filter((tx) => {
+        const n = tx.name.toLowerCase();
+        return depositHints.some((hint) => n.includes(hint));
+      })
+      .map((tx) => ({ tx, suggestedIncomeCategory: suggest(tx.name) }));
+  }, [txs]);
+
   const monthOptions = useMemo(
     () => buildMonthOptions(months?.map((m) => m.month) ?? [], monthKey),
     [months, monthKey]
@@ -252,22 +301,32 @@ export default function LedgerPage({
 
   const listFiltered = filterCat !== "all" || !!search.trim();
 
-  const expenseTotalMonth = txs
-    .filter((t) => !t.type || t.type === "expense")
-    .reduce((s, t) => s + Math.abs(t.amount), 0);
-  const incomeTotalMonth = txs
-    .filter((t) => t.type === "income")
-    .reduce((s, t) => s + Math.abs(t.amount), 0);
+  /** Full month totals after phase-2 audit filters. */
+  const { spending: expenseTotalMonth, income: incomeTotalMonth } = computeAuditedMonthTotals(txs);
 
   const handleSave = () => {
     if (!formData.name || !formData.amount) return;
+    const amount = Math.abs(parseFloat(formData.amount));
+    const duplicateCandidates = findPotentialDuplicates(
+      { name: formData.name, amount, date: formData.date, category: formData.category },
+      txs,
+    ).filter((tx) => tx.id !== editingId);
+    if (duplicateCandidates.length > 0) {
+      toast({
+        variant: "destructive",
+        title: "Possible duplicate transaction",
+        description: `Found ${duplicateCandidates.length} similar transaction${duplicateCandidates.length !== 1 ? "s" : ""} within 5 days. Edit the existing row to avoid double counting.`,
+      });
+      return;
+    }
     const payload: any = {
       date: formData.date,
       name: formData.name,
-      amount: Math.abs(parseFloat(formData.amount)),
+      amount,
       category: formData.category,
       status: formData.status,
       month: monthKey,
+      source: formData.status === "pending" ? "pending_transaction" : "posted_transaction",
     };
     if (formData.note.trim()) payload.note = formData.note.trim();
     if (editingId) {
@@ -305,13 +364,16 @@ export default function LedgerPage({
 
   const handleRemoveDuplicates = async () => {
     setRemovingDups(true);
-    for (const group of duplicateGroups) {
-      const sorted = [...group].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-      const toDelete = sorted.slice(1);
-      for (const tx of toDelete) { await deleteTx.mutateAsync({ id: tx.id, month: tx.month }); }
+    const toDelete = Array.from(selectedDuplicateIds)
+      .map((id) => (allTransactions || []).find((tx) => tx.id === id))
+      .filter((tx): tx is Transaction => !!tx);
+    for (const tx of toDelete) {
+      await deleteTx.mutateAsync({ id: tx.id, month: tx.month });
     }
     setRemovingDups(false);
     setDupDialogOpen(false);
+    setSelectedDuplicateIds(new Set());
+    toast({ description: `Removed ${toDelete.length} selected duplicate transaction${toDelete.length !== 1 ? "s" : ""}.` });
   };
 
   const handleSplit = async (splits: { name: string; amount: number; category: string }[]) => {
@@ -326,10 +388,36 @@ export default function LedgerPage({
         month: splitTx.month,
         type: splitTx.type,
         splitFrom: splitTx.id,
+        source: splitTx.source ?? (splitTx.status === "pending" ? "pending_transaction" : "posted_transaction"),
       } as any);
     }
     await deleteTx.mutateAsync({ id: splitTx.id, month: splitTx.month });
     setSplitTx(null);
+  };
+
+  const handleReclassifyIncome = async () => {
+    const selected = likelyIncomeCandidates.filter((c) => selectedIncomeIds.has(c.tx.id));
+    if (!selected.length) return;
+    setReclassifyingIncome(true);
+    try {
+      for (const item of selected) {
+        await updateTx.mutateAsync({
+          id: item.tx.id,
+          data: {
+            type: "income",
+            incomeCategory: item.suggestedIncomeCategory,
+            source: "posted_transaction",
+          } as any,
+        });
+      }
+      toast({
+        description: `Reclassified ${selected.length} transaction${selected.length !== 1 ? "s" : ""} as income deposits.`,
+      });
+      setIncomeReclassOpen(false);
+      setSelectedIncomeIds(new Set());
+    } finally {
+      setReclassifyingIncome(false);
+    }
   };
 
   return (
@@ -407,10 +495,34 @@ export default function LedgerPage({
             )}
           </div>
           <div className="flex items-center gap-1.5">
+          {likelyIncomeCandidates.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelectedIncomeIds(new Set(likelyIncomeCandidates.map((c) => c.tx.id)));
+                setIncomeReclassOpen(true);
+              }}
+              className="font-mono text-xs uppercase tracking-wider border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10"
+            >
+              <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
+              Reclassify Deposits ({likelyIncomeCandidates.length})
+            </Button>
+          )}
           {duplicateGroups.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setDupDialogOpen(true)} className="font-mono text-xs uppercase tracking-wider border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const defaults = new Set<string>();
+                duplicateGroups.forEach((g) => g.suggestedDeleteIds.forEach((id) => defaults.add(id)));
+                setSelectedDuplicateIds(defaults);
+                setDupDialogOpen(true);
+              }}
+              className="font-mono text-xs uppercase tracking-wider border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10"
+            >
               <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
-              {duplicateGroups.length} Dup{duplicateGroups.length !== 1 ? "s" : ""}
+              AI Scan {duplicateGroups.length}
             </Button>
           )}
           <Button variant="outline" size="icon" onClick={handleExport}>
@@ -510,7 +622,10 @@ export default function LedgerPage({
                     {months && months.length > 0 && (
                       <p className="text-xs text-muted-foreground/60 mt-1">
                         Data available in:{" "}
-                        {months.sort((a, b) => b.month.localeCompare(a.month)).map((m) => m.month).join(", ")}
+                        {[...(months ?? [])]
+                          .sort((a, b) => b.month.localeCompare(a.month))
+                          .map((m) => m.month)
+                          .join(", ")}
                         {" "}— use the month picker above.
                       </p>
                     )}
@@ -578,29 +693,91 @@ export default function LedgerPage({
             </DialogTitle>
           </DialogHeader>
           <p className="text-xs font-mono text-muted-foreground">
-            Found <span className="text-yellow-400">{duplicateGroups.length}</span> duplicate group{duplicateGroups.length !== 1 ? "s" : ""} across all months.
-            Removing keeps the earliest copy and deletes the rest.
+            Found <span className="text-yellow-400">{duplicateGroups.length}</span> possible duplicate group{duplicateGroups.length !== 1 ? "s" : ""}.
+            AI pre-selects likely duplicates; adjust selections before deleting.
           </p>
           <div className="space-y-3 py-2">
             {duplicateGroups.map((group, i) => (
               <div key={i} className="border border-yellow-500/20 rounded-md p-3 bg-yellow-500/5">
-                <p className="font-mono text-xs text-yellow-400 uppercase tracking-wider mb-2">{group.length} copies</p>
+                <p className="font-mono text-xs text-yellow-400 uppercase tracking-wider mb-2">{group.transactions.length} copies</p>
                 <div className="space-y-1">
-                  {group.map((tx, j) => (
-                    <div key={tx.id} className={`flex items-center justify-between text-xs font-mono ${j === 0 ? "text-foreground" : "text-muted-foreground line-through"}`}>
-                      <span>{tx.date} — {tx.name.slice(0, 35)}</span>
-                      <span className="ml-2 flex-shrink-0">${Math.abs(tx.amount).toFixed(2)} ({tx.month}) {j === 0 ? "✓ keep" : "✗ remove"}</span>
+                  {group.transactions.map((tx, j) => {
+                    const checked = selectedDuplicateIds.has(tx.id);
+                    return (
+                    <div key={tx.id} className={`flex items-center justify-between text-xs font-mono ${j === 0 ? "text-foreground" : "text-muted-foreground"}`}>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = new Set(selectedDuplicateIds);
+                            if (e.target.checked) next.add(tx.id);
+                            else next.delete(tx.id);
+                            setSelectedDuplicateIds(next);
+                          }}
+                        />
+                        <span>{tx.date} — {tx.name.slice(0, 35)}</span>
+                      </label>
+                      <span className="ml-2 flex-shrink-0">${Math.abs(tx.amount).toFixed(2)} ({tx.month}) {j === 0 ? "baseline" : "candidate"}</span>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             ))}
           </div>
           <div className="flex justify-end gap-2 border-t border-border pt-3">
             <Button variant="outline" onClick={() => setDupDialogOpen(false)} className="font-mono text-xs uppercase">Cancel</Button>
-            <Button onClick={handleRemoveDuplicates} disabled={removingDups} className="font-mono text-xs uppercase bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30">
+            <Button onClick={handleRemoveDuplicates} disabled={removingDups || selectedDuplicateIds.size === 0} className="font-mono text-xs uppercase bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30">
               {removingDups ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
-              Remove Duplicates
+              Remove Selected ({selectedDuplicateIds.size})
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Income Reclassify Dialog */}
+      <Dialog open={incomeReclassOpen} onOpenChange={setIncomeReclassOpen}>
+        <DialogContent className="sm:max-w-[620px] bg-popover/95 border-cyan-500/25 backdrop-blur-xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-emerald-300 tracking-wider text-sm flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" /> Likely Income Deposits
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs font-mono text-muted-foreground">
+            Select transactions to convert from expense to income. Suggested category is shown for each row.
+          </p>
+          <div className="space-y-2 py-2">
+            {likelyIncomeCandidates.map((item) => {
+              const checked = selectedIncomeIds.has(item.tx.id);
+              return (
+                <div key={item.tx.id} className="flex items-center justify-between gap-3 border border-emerald-500/20 rounded p-2 text-xs font-mono">
+                  <label className="flex items-center gap-2 cursor-pointer min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const next = new Set(selectedIncomeIds);
+                        if (e.target.checked) next.add(item.tx.id);
+                        else next.delete(item.tx.id);
+                        setSelectedIncomeIds(next);
+                      }}
+                    />
+                    <span className="truncate">{item.tx.date} — {item.tx.name}</span>
+                  </label>
+                  <span className="text-emerald-300 whitespace-nowrap">+${Math.abs(item.tx.amount).toFixed(2)} · {item.suggestedIncomeCategory}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-end gap-2 border-t border-border pt-3">
+            <Button variant="outline" onClick={() => setIncomeReclassOpen(false)} className="font-mono text-xs uppercase">Cancel</Button>
+            <Button
+              onClick={handleReclassifyIncome}
+              disabled={reclassifyingIncome || selectedIncomeIds.size === 0}
+              className="font-mono text-xs uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
+            >
+              {reclassifyingIncome ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <TrendingUp className="w-4 h-4 mr-2" />}
+              Reclassify Selected ({selectedIncomeIds.size})
             </Button>
           </div>
         </DialogContent>
