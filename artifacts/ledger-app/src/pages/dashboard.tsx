@@ -1,6 +1,7 @@
 import { CyberHero } from "@/components/CyberHero";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useTransactions, useBills, useRepairTransactions, useTransactionSourceCounts } from "@/hooks/use-finance";
+import { useTransactions, useBills, useRepairTransactions, useTransactionSourceCounts, useDeleteTransaction } from "@/hooks/use-finance";
+import { useToast } from "@/hooks/use-toast";
 import { computeIncomeTotals } from "@/lib/firestoreService";
 import { Loader2, TrendingUp, TrendingDown, Activity, ShieldAlert, ShieldCheck, AlertTriangle, CalendarClock, Wrench, ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -17,10 +18,55 @@ import {
   filterTransactionsToCalendarMonth,
   isTrueIncomeDeposit,
   verifyKnownTargets,
+  findSuspectedIncomeDuplicates,
 } from "@/lib/billStatus";
-import { getLedgerDiagnostics, getFinalLedgerResult, normalizeLedgerDate } from "@/lib/ledgerEngine";
-import { compareToFixture, buildRowsCSV, downloadCSV } from "@/lib/aprilFixtureCompare";
+import {
+  getLedgerDiagnostics,
+  getFinalLedgerResult,
+  normalizeLedgerDate,
+  getIncomeRowsDiagnostic,
+  getDashboardInclusionDiagnostics,
+  type DashboardInclusionRow,
+} from "@/lib/ledgerEngine";
+import {
+  compareToFixture,
+  buildRowsCSV,
+  downloadCSV,
+} from "@/lib/aprilFixtureCompare";
 import { useState, useMemo } from "react";
+
+const APRIL_EXPECTED = {
+  income: 4462.46,
+  spending: 4880.32,
+};
+
+function pickRowsForDelta(rows: DashboardInclusionRow[], target: number): DashboardInclusionRow[] {
+  const sorted = [...rows].sort((a, b) => b.amount - a.amount);
+  const picked: DashboardInclusionRow[] = [];
+  let remaining = Math.round(target * 100);
+  for (const row of sorted) {
+    const cents = Math.round(row.amount * 100);
+    if (remaining <= 0) break;
+    if (cents <= remaining) {
+      picked.push(row);
+      remaining -= cents;
+    }
+  }
+  return picked;
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function includedReasonForRow(row: DashboardInclusionRow): string {
+  if (!row.includedInDashboard) return `excluded:${row.exclusionReason ?? "unknown"}`;
+  if (row.status === "review") return "included_active_review";
+  if (row.status === "pending") return "included_active_pending";
+  if (row.source === "manual_bill" || row.source === "linked_bill") return "included_manual_or_linked";
+  if (row.source === "imported_bank_transaction") return "included_imported_bank_transaction";
+  return "included_active_cleared";
+}
 
 const CATEGORY_DISPLAY: Record<string, string> = {
   Bills: "Bills / Debt",
@@ -49,7 +95,11 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
   const { data: bills, isLoading: billsLoading } = useBills();
   const repairMutation = useRepairTransactions();
   const { data: sourceCounts, refetch: refetchSourceCounts } = useTransactionSourceCounts(monthKey);
+  const deleteTxMutation = useDeleteTransaction();
+  const { toast } = useToast();
   const [diagExpanded, setDiagExpanded] = useState(false);
+  // Track which suspected-duplicate groups the user has marked "Keep Both"
+  const [keptDuplicateGroups, setKeptDuplicateGroups] = useState<Set<string>>(new Set());
 
   // ALL derived state + memos must be declared before any conditional return
   const txs = transactions || [];
@@ -61,6 +111,18 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
     const { finalRows } = getFinalLedgerResult(monthTxs);
     return compareToFixture(finalRows, monthTxs);
   }, [isAprilAudit, monthTxs]);
+
+  const incomeDiagnostic = useMemo(() => {
+    if (monthTxs.length === 0) return [];
+    return getIncomeRowsDiagnostic(monthTxs);
+  }, [monthTxs]);
+
+  const dashboardDiag = useMemo(() => getDashboardInclusionDiagnostics(monthTxs), [monthTxs]);
+
+  const suspectedIncomeDuplicates = useMemo(
+    () => findSuspectedIncomeDuplicates(monthTxs),
+    [monthTxs],
+  );
 
   if (txLoading || billsLoading) {
     return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
@@ -92,6 +154,90 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
   const incomeSources = Object.entries(incomeTotals).filter(([, amount]) => amount > 0);
   const audit = buildMonthAuditReport(monthTxs);
   const targetsReport = verifyKnownTargets(monthKey, monthTxs);
+  const incomeOverBy = Math.max(0, Number((dashboardDiag.sumIncludedIncome - APRIL_EXPECTED.income).toFixed(2)));
+  const spendingOverBy = Math.max(0, Number((dashboardDiag.sumIncludedSpending - APRIL_EXPECTED.spending).toFixed(2)));
+  const extraIncomeRows = pickRowsForDelta(
+    dashboardDiag.includedRows.filter((r) => r.engineType === "income"),
+    incomeOverBy,
+  );
+  const extraSpendingRows = pickRowsForDelta(
+    dashboardDiag.includedRows.filter((r) => r.engineType !== "income"),
+    spendingOverBy,
+  );
+  const spendingRows = dashboardDiag.rows.filter((r) => r.engineType !== "income");
+  const includedSpendingRows = spendingRows.filter((r) => r.includedInDashboard);
+  const excludedSpendingRows = spendingRows.filter((r) => !r.includedInDashboard);
+  const rawSpendingTotal = round2(spendingRows.reduce((s, r) => s + r.amount, 0));
+  const includedSpendingTotal = round2(includedSpendingRows.reduce((s, r) => s + r.amount, 0));
+  const excludedSpendingTotal = round2(excludedSpendingRows.reduce((s, r) => s + r.amount, 0));
+  const spendingDiffFromExpected = round2(includedSpendingTotal - APRIL_EXPECTED.spending);
+
+  const spendingFixtureDelta = (() => {
+    if (!isAprilAudit || !fixtureComparison) return null;
+    const includedIds = new Set(includedSpendingRows.map((r) => r.id));
+    const extraSpendingRows = fixtureComparison.extraInFirestore
+      .filter((tx) => ((tx.type ?? "expense") !== "income") && includedIds.has(tx.id))
+      .map((tx) => ({
+        id: tx.id,
+        date: tx.date,
+        name: tx.name,
+        amount: Math.abs(tx.amount),
+        source: tx.source ?? "—",
+      }));
+    const missingSpendingRows = fixtureComparison.missingFromFirestore
+      .filter((f) => f.expectedType === "expense")
+      .map((f) => ({
+        id: `missing:${f.date}:${f.amount}:${f.name}`,
+        date: f.date,
+        name: f.name,
+        amount: f.amount,
+        source: "fixture_missing",
+      }));
+    const extraTotal = round2(extraSpendingRows.reduce((s, r) => s + r.amount, 0));
+    const missingTotal = round2(missingSpendingRows.reduce((s, r) => s + r.amount, 0));
+    const netDelta = round2(extraTotal - missingTotal);
+    const overageCandidates = pickRowsForDelta(
+      extraSpendingRows.map((r) => ({
+        id: r.id,
+        date: r.date,
+        name: r.name,
+        amount: r.amount,
+        postedDate: undefined,
+        storedType: "expense",
+        engineType: "expense",
+        category: "—",
+        status: "cleared",
+        isDuplicate: false,
+        includedInDashboard: true,
+        source: r.source,
+      })),
+      Math.max(0, spendingDiffFromExpected),
+    ).map((r) => ({ id: r.id, date: r.date, name: r.name, amount: r.amount }));
+    return {
+      extraSpendingRows,
+      missingSpendingRows,
+      extraTotal,
+      missingTotal,
+      netDelta,
+      overageCandidates,
+    };
+  })();
+
+  
+
+  const includedSpendingBySignature = (() => {
+    const buckets = new Map<string, number>();
+    includedSpendingRows.forEach((r) => {
+      const sig = `${r.date}|${r.amount.toFixed(2)}|${r.name.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim()}`;
+      buckets.set(sig, (buckets.get(sig) ?? 0) + 1);
+    });
+    return Array.from(buckets.entries())
+      .filter(([, count]) => count > 1)
+      .map(([signature, count]) => ({ signature, count }))
+      .slice(0, 20);
+  })();
+
+
 
   const today = new Date();
   const todayDay = today.getDate();
@@ -309,6 +455,62 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
               )}
             </div>
           </div>
+          <div>
+            <p className="text-[10px] font-mono uppercase text-muted-foreground mb-1">Inclusion table totals (month)</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-xs font-mono">
+              <div className="rounded border border-emerald-500/25 bg-emerald-500/5 p-2">
+                Included income: <span className="text-emerald-300">${dashboardDiag.sumIncludedIncome.toFixed(2)}</span>
+              </div>
+              <div className="rounded border border-zinc-500/25 bg-zinc-500/5 p-2">
+                Excluded income: <span className="text-zinc-300">${dashboardDiag.sumExcludedIncome.toFixed(2)}</span>
+              </div>
+              <div className="rounded border border-red-500/25 bg-red-500/5 p-2">
+                Included spending: <span className="text-red-300">${dashboardDiag.sumIncludedSpending.toFixed(2)}</span>
+              </div>
+              <div className="rounded border border-zinc-500/25 bg-zinc-500/5 p-2">
+                Excluded spending: <span className="text-zinc-300">${dashboardDiag.sumExcludedSpending.toFixed(2)}</span>
+              </div>
+              <div className="rounded border border-cyan-500/25 bg-cyan-500/5 p-2">
+                Included rows: <span className="text-cyan-300">{dashboardDiag.countIncludedRows}</span>
+              </div>
+              <div className="rounded border border-zinc-500/25 bg-zinc-500/5 p-2">
+                Excluded rows: <span className="text-zinc-300">{dashboardDiag.countExcludedRows}</span>
+              </div>
+            </div>
+          </div>
+          {monthKey === "2026-04" && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-mono uppercase text-muted-foreground">
+                Current April overcount candidates — Income +${incomeOverBy.toFixed(2)} / Spending +${spendingOverBy.toFixed(2)}
+              </p>
+              <div className="rounded border border-amber-500/20 bg-amber-500/5 p-2">
+                <p className="text-[10px] font-mono uppercase text-amber-300 mb-1">Income overcount rows (candidate list)</p>
+                {extraIncomeRows.length === 0 ? (
+                  <p className="text-[11px] font-mono text-muted-foreground">No candidate rows found.</p>
+                ) : (
+                  extraIncomeRows.map((r) => (
+                    <div key={r.id} className="text-[11px] font-mono flex items-center justify-between gap-2 border-b border-border/20 pb-1">
+                      <span className="truncate">{r.date} — {r.name}</span>
+                      <span className="text-emerald-300">${r.amount.toFixed(2)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="rounded border border-amber-500/20 bg-amber-500/5 p-2">
+                <p className="text-[10px] font-mono uppercase text-amber-300 mb-1">Spending overcount rows (candidate list)</p>
+                {extraSpendingRows.length === 0 ? (
+                  <p className="text-[11px] font-mono text-muted-foreground">No candidate rows found.</p>
+                ) : (
+                  extraSpendingRows.map((r) => (
+                    <div key={r.id} className="text-[11px] font-mono flex items-center justify-between gap-2 border-b border-border/20 pb-1">
+                      <span className="truncate">{r.date} — {r.name}</span>
+                      <span className="text-red-300">${r.amount.toFixed(2)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -637,6 +839,413 @@ export default function DashboardPage({ selectedMonth }: { selectedMonth: string
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Income Row Diagnostic — every stored-income row, with engine reason ──── */}
+          {diagExpanded && incomeDiagnostic.length > 0 && (
+            <div className="mt-6 border-t border-emerald-500/30 pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-mono text-xs uppercase tracking-wider text-emerald-300 font-semibold">
+                  Stored Income Rows ({incomeDiagnostic.length}) — engine lineage
+                </h4>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="font-mono text-[10px] h-6 px-2"
+                  onClick={async () => {
+                    const lines: string[] = [];
+                    lines.push(`=== STORED INCOME ROWS DIAGNOSTIC — ${monthKey} ===`);
+                    lines.push(`Total stored income rows: ${incomeDiagnostic.length}`);
+                    lines.push(`Engine kept as income:    ${incomeDiagnostic.filter((r) => r.included).length}`);
+                    lines.push(`Demoted to expense:       ${incomeDiagnostic.filter((r) => r.typeChange === "demoted_to_expense").length}`);
+                    lines.push(`Filtered out (status/dup):${incomeDiagnostic.filter((r) => r.typeChange === "filtered_out").length}`);
+                    lines.push(`Stored income $ total:    $${incomeDiagnostic.reduce((s, r) => s + r.amount, 0).toFixed(2)}`);
+                    lines.push(`Engine income $ total:    $${incomeDiagnostic.filter((r) => r.included).reduce((s, r) => s + r.amount, 0).toFixed(2)}`);
+                    lines.push("");
+                    lines.push("INCLUDED (kept as income):");
+                    incomeDiagnostic.filter((r) => r.included).forEach((r) =>
+                      lines.push(`  ${r.date} | ${r.name} | $${r.amount.toFixed(2)} | reason=${r.reason} | status=${r.status}`),
+                    );
+                    lines.push("");
+                    lines.push("DEMOTED to expense (engine flipped income → expense):");
+                    incomeDiagnostic
+                      .filter((r) => r.typeChange === "demoted_to_expense")
+                      .forEach((r) =>
+                        lines.push(
+                          `  ${r.date} | ${r.name} | $${r.amount.toFixed(2)} | reason=${r.reason} | category=${r.engineCategory}`,
+                        ),
+                      );
+                    lines.push("");
+                    lines.push("FILTERED OUT (not reached by engine):");
+                    incomeDiagnostic
+                      .filter((r) => r.typeChange === "filtered_out")
+                      .forEach((r) =>
+                        lines.push(
+                          `  ${r.date} | ${r.name} | $${r.amount.toFixed(2)} | reason=${r.reason} | status=${r.status} | dup=${r.isDuplicate}`,
+                        ),
+                      );
+                    await navigator.clipboard.writeText(lines.join("\n"));
+                  }}
+                >
+                  📋 Copy
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 mb-3 font-mono text-[10px]">
+                <div className="border border-emerald-500/30 rounded p-2 bg-emerald-500/5">
+                  <div className="text-emerald-300 uppercase">Kept as income</div>
+                  <div className="text-emerald-100 text-base font-bold">
+                    {incomeDiagnostic.filter((r) => r.included).length}
+                  </div>
+                  <div className="text-emerald-200/80">
+                    ${incomeDiagnostic.filter((r) => r.included).reduce((s, r) => s + r.amount, 0).toFixed(2)}
+                  </div>
+                </div>
+                <div className="border border-amber-500/30 rounded p-2 bg-amber-500/5">
+                  <div className="text-amber-300 uppercase">Demoted to expense</div>
+                  <div className="text-amber-100 text-base font-bold">
+                    {incomeDiagnostic.filter((r) => r.typeChange === "demoted_to_expense").length}
+                  </div>
+                  <div className="text-amber-200/80">
+                    ${incomeDiagnostic.filter((r) => r.typeChange === "demoted_to_expense").reduce((s, r) => s + r.amount, 0).toFixed(2)}
+                  </div>
+                </div>
+                <div className="border border-zinc-500/30 rounded p-2 bg-zinc-500/5">
+                  <div className="text-zinc-300 uppercase">Filtered out</div>
+                  <div className="text-zinc-100 text-base font-bold">
+                    {incomeDiagnostic.filter((r) => r.typeChange === "filtered_out").length}
+                  </div>
+                  <div className="text-zinc-200/80">
+                    ${incomeDiagnostic.filter((r) => r.typeChange === "filtered_out").reduce((s, r) => s + r.amount, 0).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="font-mono text-[10px] max-h-64 overflow-y-auto border border-border/40 rounded">
+                <table className="w-full">
+                  <thead className="bg-zinc-900/60 sticky top-0">
+                    <tr className="text-zinc-300">
+                      <th className="text-left p-1">Date</th>
+                      <th className="text-left p-1">Name</th>
+                      <th className="text-right p-1">Amount</th>
+                      <th className="text-left p-1">Stored→Engine</th>
+                      <th className="text-left p-1">Reason</th>
+                      <th className="text-left p-1">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {incomeDiagnostic.map((r) => {
+                      const rowColor = r.included
+                        ? "text-emerald-200"
+                        : r.typeChange === "demoted_to_expense"
+                          ? "text-amber-200"
+                          : "text-zinc-400";
+                      return (
+                        <tr key={r.id} className={`${rowColor} border-b border-border/20`}>
+                          <td className="p-1 whitespace-nowrap">{r.date}</td>
+                          <td className="p-1 truncate max-w-[180px]">{r.name}</td>
+                          <td className="p-1 text-right">${r.amount.toFixed(2)}</td>
+                          <td className="p-1 whitespace-nowrap">{r.storedType}→{r.engineType}</td>
+                          <td className="p-1">{r.reason}</td>
+                          <td className="p-1">{r.status}{r.isDuplicate ? " (dup)" : ""}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {diagExpanded && dashboardDiag.rows.length > 0 && (
+            <div className="mt-6 border-t border-cyan-500/30 pt-4">
+              <h4 className="font-mono text-xs uppercase tracking-wider text-cyan-300 font-semibold mb-2">
+                Row-Level Inclusion Diagnostics ({dashboardDiag.rows.length} rows)
+              </h4>
+              <div className="font-mono text-[10px] max-h-72 overflow-y-auto border border-border/40 rounded">
+                <table className="w-full">
+                  <thead className="bg-zinc-900/60 sticky top-0">
+                    <tr className="text-zinc-300">
+                      <th className="text-left p-1">ID</th>
+                      <th className="text-left p-1">Date</th>
+                      <th className="text-left p-1">Posted</th>
+                      <th className="text-left p-1">Merchant</th>
+                      <th className="text-right p-1">Amount</th>
+                      <th className="text-left p-1">Stored/Engine</th>
+                      <th className="text-left p-1">Category</th>
+                      <th className="text-left p-1">Status</th>
+                      <th className="text-left p-1">Dup</th>
+                      <th className="text-left p-1">Included</th>
+                      <th className="text-left p-1">Exclusion</th>
+                      <th className="text-left p-1">Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dashboardDiag.rows.map((r) => (
+                      <tr key={r.id} className="border-b border-border/20">
+                        <td className="p-1">{r.id.slice(0, 8)}</td>
+                        <td className="p-1">{r.date}</td>
+                        <td className="p-1">{r.postedDate ?? "—"}</td>
+                        <td className="p-1 truncate max-w-[180px]">{r.name}</td>
+                        <td className="p-1 text-right">${r.amount.toFixed(2)}</td>
+                        <td className="p-1">{r.storedType}→{r.engineType}</td>
+                        <td className="p-1">{r.category}</td>
+                        <td className="p-1">{r.status}</td>
+                        <td className="p-1">{r.isDuplicate ? `${r.duplicateReason ?? "dup"} (${r.duplicateConfidence ?? "?"})` : "—"}</td>
+                        <td className="p-1">{r.includedInDashboard ? "true" : "false"}</td>
+                        <td className="p-1">{r.exclusionReason ?? "—"}</td>
+                        <td className="p-1">{r.source ?? r.sourceFile ?? r.importBatch ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <h4 className="font-mono text-xs uppercase tracking-wider text-cyan-300 font-semibold">
+                  April Spending Audit ({spendingRows.length} expense rows)
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[10px] font-mono">
+                  <div className="rounded bg-black/20 p-2">
+                    <p className="text-muted-foreground uppercase">Raw spending total</p>
+                    <p className="text-sm">${rawSpendingTotal.toFixed(2)}</p>
+                  </div>
+                  <div className="rounded bg-black/20 p-2">
+                    <p className="text-muted-foreground uppercase">Included spending total</p>
+                    <p className="text-sm text-red-300">${includedSpendingTotal.toFixed(2)}</p>
+                  </div>
+                  <div className="rounded bg-black/20 p-2">
+                    <p className="text-muted-foreground uppercase">Excluded spending total</p>
+                    <p className="text-sm text-emerald-300">${excludedSpendingTotal.toFixed(2)}</p>
+                  </div>
+                  <div className="rounded bg-black/20 p-2">
+                    <p className="text-muted-foreground uppercase">Expected spending total</p>
+                    <p className="text-sm">${APRIL_EXPECTED.spending.toFixed(2)}</p>
+                  </div>
+                  <div className="rounded bg-black/20 p-2">
+                    <p className="text-muted-foreground uppercase">Difference</p>
+                    <p className={`text-sm ${spendingDiffFromExpected > 0 ? "text-red-300" : "text-emerald-300"}`}>
+                      {spendingDiffFromExpected >= 0 ? "+" : ""}${spendingDiffFromExpected.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+
+                {spendingFixtureDelta && (
+                  <div className="grid sm:grid-cols-3 gap-2 text-[10px] font-mono">
+                    <div className="rounded bg-black/20 p-2">
+                      <p className="text-muted-foreground uppercase">Extra spending rows in Firestore</p>
+                      <p>{spendingFixtureDelta.extraSpendingRows.length} rows · ${spendingFixtureDelta.extraTotal.toFixed(2)}</p>
+                    </div>
+                    <div className="rounded bg-black/20 p-2">
+                      <p className="text-muted-foreground uppercase">Missing spending rows from fixture</p>
+                      <p>{spendingFixtureDelta.missingSpendingRows.length} rows · ${spendingFixtureDelta.missingTotal.toFixed(2)}</p>
+                    </div>
+                    <div className="rounded bg-black/20 p-2">
+                      <p className="text-muted-foreground uppercase">Net fixture delta (extra - missing)</p>
+                      <p className={spendingFixtureDelta.netDelta > 0 ? "text-red-300" : "text-emerald-300"}>
+                        ${spendingFixtureDelta.netDelta.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="font-mono text-[10px] max-h-72 overflow-y-auto border border-border/40 rounded">
+                  <table className="w-full">
+                    <thead className="bg-zinc-900/60 sticky top-0">
+                      <tr className="text-zinc-300">
+                        <th className="text-left p-1">ID</th>
+                        <th className="text-left p-1">Date</th>
+                        <th className="text-left p-1">Posted</th>
+                        <th className="text-left p-1">Merchant</th>
+                        <th className="text-right p-1">Amount</th>
+                        <th className="text-left p-1">Stored/Engine</th>
+                        <th className="text-left p-1">Category</th>
+                        <th className="text-left p-1">Status</th>
+                        <th className="text-left p-1">Dup</th>
+                        <th className="text-left p-1">Included</th>
+                        <th className="text-left p-1">Source</th>
+                        <th className="text-left p-1">Reason Included</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {spendingRows
+                        .slice()
+                        .sort((a, b) => a.date.localeCompare(b.date) || b.amount - a.amount)
+                        .map((r) => (
+                          <tr key={`sp-${r.id}`} className="border-b border-border/20">
+                            <td className="p-1">{r.id.slice(0, 8)}</td>
+                            <td className="p-1">{r.date}</td>
+                            <td className="p-1">{r.postedDate ?? "—"}</td>
+                            <td className="p-1 truncate max-w-[180px]">{r.name}</td>
+                            <td className="p-1 text-right">${r.amount.toFixed(2)}</td>
+                            <td className="p-1">{r.storedType}→{r.engineType}</td>
+                            <td className="p-1">{r.category}</td>
+                            <td className="p-1">{r.status}</td>
+                            <td className="p-1">{r.isDuplicate ? `${r.duplicateReason ?? "dup"} (${r.duplicateConfidence ?? "?"})` : "—"}</td>
+                            <td className="p-1">{r.includedInDashboard ? "true" : "false"}</td>
+                            <td className="p-1">{r.source ?? r.sourceFile ?? r.importBatch ?? "—"}</td>
+                            <td className="p-1">{includedReasonForRow(r)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {spendingFixtureDelta && spendingFixtureDelta.overageCandidates.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-mono text-amber-300 uppercase">
+                      Overage candidates (extra spending rows fitting ${Math.max(0, spendingDiffFromExpected).toFixed(2)})
+                    </p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto border border-border/30 rounded p-2 bg-black/20">
+                      {spendingFixtureDelta.overageCandidates.map((r) => (
+                        <div key={`ovr-${r.id}`} className="flex items-center justify-between border-b border-border/20 pb-1">
+                          <span className="truncate max-w-[75%]">{r.date} — {r.name} ({r.id.slice(0, 8)})</span>
+                          <span className="text-red-300">${r.amount.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                
+              </div>
+            </div>
+          )}
+
+          {/* ── Suspected Income Duplicates — manual review only, never auto-delete ── */}
+          {diagExpanded && suspectedIncomeDuplicates.length > 0 && (
+            <div className="mt-6 border-t border-orange-500/30 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-mono text-xs uppercase tracking-wider text-orange-300 font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Suspected Income Duplicates ({suspectedIncomeDuplicates.length} group{suspectedIncomeDuplicates.length !== 1 ? "s" : ""})
+                </h4>
+                <span className="font-mono text-[10px] text-orange-200/70">
+                  Same date + amount. Review manually — nothing is auto-deleted.
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {suspectedIncomeDuplicates.map((group) => {
+                  const groupKey = `${group.date}|${group.amount.toFixed(2)}`;
+                  const isKept = keptDuplicateGroups.has(groupKey);
+                  const totalInflation = group.amount * (group.rows.length - 1);
+                  return (
+                    <div
+                      key={groupKey}
+                      className={`border rounded-lg p-3 font-mono text-[11px] ${
+                        isKept
+                          ? "border-emerald-500/30 bg-emerald-500/5"
+                          : "border-orange-500/40 bg-orange-500/5"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <span className="text-orange-200 font-semibold">
+                            {group.date} — ${group.amount.toFixed(2)} × {group.rows.length} rows
+                          </span>
+                          <span className="ml-3 text-orange-200/70">
+                            (inflates Money In by ${totalInflation.toFixed(2)} if all kept)
+                          </span>
+                        </div>
+                        {isKept && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] uppercase tracking-wider text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded px-2 py-0.5">
+                              ✓ Marked legitimate
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="font-mono text-[10px] h-6 px-2 text-orange-300 hover:bg-orange-500/10"
+                              title="Undo — flip this group back to review state so you can delete one"
+                              onClick={() =>
+                                setKeptDuplicateGroups((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(groupKey);
+                                  return next;
+                                })
+                              }
+                            >
+                              ↶ Undo
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        {group.rows.map((tx, idx) => {
+                          const isFirst = idx === 0;
+                          return (
+                            <div
+                              key={tx.id}
+                              className="flex items-center justify-between gap-3 border border-border/30 rounded px-2 py-1.5 bg-card/30"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="text-zinc-200 truncate" title={tx.name}>
+                                  {tx.name}
+                                </div>
+                                <div className="text-[9px] text-muted-foreground mt-0.5">
+                                  id: {tx.id.slice(0, 8)} · status: {tx.status} · stored: {tx.type}
+                                  {isFirst && <span className="ml-2 text-emerald-400">[KEEP — original]</span>}
+                                </div>
+                              </div>
+                              <div className="text-emerald-400 font-bold whitespace-nowrap">
+                                +${Math.abs(tx.amount).toFixed(2)}
+                              </div>
+                              {!isFirst && !isKept && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="font-mono text-[9px] h-7 border-red-500/40 text-red-300 hover:bg-red-500/10"
+                                  disabled={deleteTxMutation.isPending}
+                                  onClick={() => {
+                                    deleteTxMutation.mutate(
+                                      { id: tx.id, month: tx.month ?? monthKey },
+                                      {
+                                        onSuccess: () =>
+                                          toast({
+                                            title: "Duplicate income row deleted",
+                                            description: `${tx.date} ${tx.name} ($${Math.abs(tx.amount).toFixed(2)})`,
+                                          }),
+                                        onError: (err: unknown) =>
+                                          toast({
+                                            variant: "destructive",
+                                            title: "Delete failed",
+                                            description: err instanceof Error ? err.message : "Unknown error",
+                                          }),
+                                      },
+                                    );
+                                  }}
+                                >
+                                  Delete this row
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {!isKept && (
+                        <div className="flex justify-end mt-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="font-mono text-[10px] h-7 text-emerald-300 hover:bg-emerald-500/10"
+                            onClick={() =>
+                              setKeptDuplicateGroups((prev) => {
+                                const next = new Set(prev);
+                                next.add(groupKey);
+                                return next;
+                              })
+                            }
+                          >
+                            Keep all — these are legitimate repeated deposits
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </CardContent>

@@ -1,5 +1,6 @@
 import {
   getCategoryTotals,
+  getDashboardInclusionDiagnostics,
   getFinalLedgerResult,
   getFinalLedgerTransactions,
   getIncomeDepositRows,
@@ -251,6 +252,74 @@ export function isReportableIncome(tx: Transaction): boolean {
 
 export function isTrueIncomeDeposit(tx: Transaction): boolean {
   return getIncomeDepositRows(getFinalLedgerTransactions([tx])).length > 0;
+}
+
+// ─── Suspected income duplicate detection ────────────────────────────────────
+//
+// After a CSV is imported, two stored income rows can describe the same real
+// bank event when:
+//   • the same row gets imported twice with slightly different bank descriptions
+//     (e.g. "PURCHASE RETURN AUTHORIZED ON 04/16 AMAZON MKTPLACE…" vs the short
+//     "PURCHASE RETURN" entry typed manually)
+//   • a manual entry duplicates an automatic CSV row
+//   • two import sessions overlap and the engine's exact-match dedup misses
+//     because of a single-character description difference
+//
+// These pairs inflate Money In. We never auto-delete — the user reviews each
+// pair and chooses Keep Both or Delete One. The detection here is intentionally
+// conservative: same calendar date + same amount within $0.01 + same income
+// type. Name similarity is shown in the UI but is NOT required for matching,
+// because "PURCHASE RETURN" vs "PURCHASE RETURN AUTHORIZED ON 04/16 AMAZON MKT…"
+// would not match under a strict normalised-name rule.
+
+export interface SuspectedIncomeDuplicate {
+  date: string;        // ISO calendar date both rows share
+  amount: number;      // shared amount
+  rows: Transaction[]; // 2+ income rows that match this date + amount
+}
+
+function normalizeIsoDate(date: string): string {
+  if (/^\d{4}-\d{2}-\d{2}/.test(date)) return date.slice(0, 10);
+  const slash = date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (slash) {
+    const [, mm, dd, yy] = slash;
+    const year = yy.length === 2 ? `20${yy}` : yy;
+    return `${year}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+  }
+  return date;
+}
+
+/**
+ * Group already-saved income rows by (calendar date, amount cents) and return
+ * groups of 2+. These are flagged as **suspected** duplicates for manual review
+ * — they may also be legitimate (e.g. two $76 Amazon Flex transfers on the
+ * same day). The dashboard panel lets the user Keep Both or delete the
+ * extra row(s) one at a time.
+ */
+export function findSuspectedIncomeDuplicates(transactions: Transaction[]): SuspectedIncomeDuplicate[] {
+  const incomeRows = transactions.filter((t) => t.type === "income");
+  const groups = new Map<string, Transaction[]>();
+  for (const tx of incomeRows) {
+    const iso = normalizeIsoDate(tx.date);
+    const cents = Math.round(Math.abs(tx.amount) * 100);
+    const key = `${iso}|${cents}`;
+    const existing = groups.get(key);
+    if (existing) existing.push(tx);
+    else groups.set(key, [tx]);
+  }
+  const result: SuspectedIncomeDuplicate[] = [];
+  for (const [key, rows] of groups.entries()) {
+    if (rows.length < 2) continue;
+    const [iso, cents] = key.split("|");
+    result.push({
+      date: iso,
+      amount: Number(cents) / 100,
+      rows: rows.slice().sort((a, b) => (a.id < b.id ? -1 : 1)),
+    });
+  }
+  // Most recent first
+  result.sort((a, b) => (a.date < b.date ? 1 : -1));
+  return result;
 }
 
 export type MoneyInKind = "earned" | "refund_reversal" | "internal_transfer" | "other";
@@ -653,19 +722,22 @@ export function computeAuditedMonthTotals(
   transferIn: number;
   otherMoneyIn: number;
 } {
-  const totals = getLedgerTotals(getFinalLedgerTransactions(transactions));
+  const diag = getDashboardInclusionDiagnostics(transactions);
   return {
-    income: totals.income,
-    spending: totals.spending,
-    earnedIncome: totals.earnedIncome,
-    refundReversalIn: totals.refundReversalIn,
-    transferIn: totals.transferIn,
-    otherMoneyIn: totals.otherMoneyIn,
+    income: diag.sumIncludedIncome,
+    spending: diag.sumIncludedSpending,
+    // Detailed money-in breakdown is not yet split by inclusion reason, so
+    // we keep these aligned to current cash-flow income number.
+    earnedIncome: diag.sumIncludedIncome,
+    refundReversalIn: 0,
+    transferIn: 0,
+    otherMoneyIn: 0,
   };
 }
 
 export function filterAuditedTransactions(transactions: Transaction[], options?: MonthAuditOptions): Transaction[] {
-  return getFinalLedgerTransactions(transactions);
+  const includedIds = new Set(getDashboardInclusionDiagnostics(transactions).includedRows.map((r) => r.id));
+  return getFinalLedgerTransactions(transactions).filter((tx) => includedIds.has(tx.id));
 }
 
 export function getCleanLedgerTransactions(transactions: Transaction[], options?: MonthAuditOptions): Transaction[] {
@@ -674,7 +746,7 @@ export function getCleanLedgerTransactions(transactions: Transaction[], options?
 
 /** Spending-only category totals from the same clean rules as dashboard (refund-like credits excluded). */
 export function computeAuditedCategoryTotals(transactions: Transaction[], options?: MonthAuditOptions): Record<string, number> {
-  return getCategoryTotals(getFinalLedgerTransactions(transactions));
+  return getCategoryTotals(filterAuditedTransactions(transactions));
 }
 
 function merchantKey(value: string): string {
@@ -682,47 +754,6 @@ function merchantKey(value: string): string {
 }
 
 export function buildMonthAuditReport(transactions: Transaction[], options?: MonthAuditOptions): MonthAuditReport {
-  {
-    const finalResult = getFinalLedgerResult(transactions);
-    const finalRows = finalResult.finalRows;
-    const finalTotals = getLedgerTotals(finalRows);
-    const expenses = transactions.filter((t) => !t.type || t.type === "expense");
-    const income = transactions.filter((t) => t.type === "income");
-    const rawSpending = expenses.reduce((s, t) => s + Math.abs(t.amount), 0);
-    const rawIncome = income.reduce((s, t) => s + Math.abs(t.amount), 0);
-    const excludedRows = finalResult.excludedRows.map((tx) => ({
-      id: tx.id,
-      reason: tx.duplicateReason,
-      name: tx.name,
-      amount: Math.abs(tx.amount),
-      date: tx.date,
-    }));
-
-    return {
-      rawIncome,
-      auditedIncome: finalTotals.income,
-      rawSpending,
-      auditedSpending: finalTotals.spending,
-      categoryTotalsAudited: getCategoryTotals(finalRows),
-      manualBillMergedIds: [],
-      excludedPendingCount: 0,
-      excludedDuplicateCount: excludedRows.length,
-      excludedSplitCount: transactions.filter((t) => !!t.splitFrom).length,
-      duplicateGroupCount: 0,
-      strictDuplicateExpenseIds: excludedRows.map((row) => row.id),
-      suspectedDuplicateExpenseIds: [],
-      duplicateCandidateIds: excludedRows.map((row) => row.id),
-      duplicateIncomeCandidateIds: [],
-      overcountedBills: [],
-      manualImportedConflicts: [],
-      recurringOverages: [],
-      recurringOverageRows: [],
-      splitComponentIds: transactions.filter((t) => !!t.splitFrom).map((t) => t.id),
-      confirmedDuplicateAmountRemoved: excludedRows.reduce((s, row) => s + row.amount, 0),
-      excludedRows,
-    };
-  }
-
   const expenses = transactions.filter((t) => !t.type || t.type === "expense");
   const income = transactions.filter((t) => t.type === "income");
   const rawSpending = expenses.reduce((s, t) => s + Math.abs(t.amount), 0);

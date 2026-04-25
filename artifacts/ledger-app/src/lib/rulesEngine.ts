@@ -396,6 +396,51 @@ function isDuplicateIncome(item: RawTransaction, existing: Transaction[]): Dupli
     : { isDuplicate: false };
 }
 
+/**
+ * Visible safe-import label for an import-preview row.
+ *
+ * Mapping rules:
+ *   NEW_SAFE_TO_IMPORT       — no duplicate signal of any kind
+ *   EXACT_DUPLICATE_SKIP     — exact match (same date + name + amount); auto-recommended skip
+ *   POSTING_DATE_MATCH_REVIEW — fuzzy ±1–2 day window with first-word merchant match (expense)
+ *   POSSIBLE_DUPLICATE_REVIEW — fuzzy income match or batch-internal duplicate
+ *   CONFLICT_REVIEW          — same-amount/date but mismatched name OR pending-vs-posted
+ */
+export type SafeImportLabel =
+  | "NEW_SAFE_TO_IMPORT"
+  | "EXACT_DUPLICATE_SKIP"
+  | "POSTING_DATE_MATCH_REVIEW"
+  | "POSSIBLE_DUPLICATE_REVIEW"
+  | "CONFLICT_REVIEW";
+
+export function getSafeImportLabel(item: ImportPreviewItem): SafeImportLabel {
+  if (!item.isDuplicate) return "NEW_SAFE_TO_IMPORT";
+
+  // Exact duplicate (same date + name + amount, exact confidence) → skip
+  if (item.duplicateConfidence === "exact" && item.duplicateReason === "exact_duplicate") {
+    return "EXACT_DUPLICATE_SKIP";
+  }
+
+  // Within-batch identical row → conflict (user must decide)
+  if (item.duplicateReason === "batch_exact_duplicate") return "CONFLICT_REVIEW";
+
+  // Pending-vs-posted match or same-amount-merchant-window → conflict review
+  if (
+    item.duplicateReason === "pending_to_posted_match" ||
+    item.duplicateReason === "same_amount_same_merchant_date_window"
+  ) {
+    return "CONFLICT_REVIEW";
+  }
+
+  // Posting-date offset (±1–2 days, first-word match) on EXPENSE → posting-date label
+  if (item.duplicateReason === "posting_date_match" && item.txType === "expense") {
+    return "POSTING_DATE_MATCH_REVIEW";
+  }
+
+  // Any remaining fuzzy signal (e.g. fuzzy income) → possible duplicate review
+  return "POSSIBLE_DUPLICATE_REVIEW";
+}
+
 export function runRulesEngine(
   rawItems: RawTransaction[],
   userRules: Rule[],

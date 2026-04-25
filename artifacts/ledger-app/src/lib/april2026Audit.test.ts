@@ -13,7 +13,9 @@ import {
   loadApril2026SpendFixture,
   sumSpendFixtureByAuditLabel,
 } from "./__fixtures__/loadApril2026AuditFixture";
-import { detectIncomeCategory, getCategoryForTransaction, isKnownExpenseMerchant, runRulesEngine } from "./rulesEngine";
+import { detectIncomeCategory, getCategoryForTransaction, getSafeImportLabel, isKnownExpenseMerchant, runRulesEngine } from "./rulesEngine";
+import { findSuspectedIncomeDuplicates } from "./billStatus";
+import { getFinalLedgerResult, getIncomeRowsDiagnostic, getLedgerTotals } from "./ledgerEngine";
 import type { Transaction } from "./types";
 
 describe("April 2026 Wells Fargo manual audit (fixtures)", () => {
@@ -99,6 +101,154 @@ describe("April 2026 Wells Fargo manual audit (fixtures)", () => {
     expect(preview.filter((row) => row.isDuplicate)).toHaveLength(0);
     expect(preview.filter((row) => row.action === "save")).toHaveLength(incomeRows.length);
     expect(preview.reduce((sum, row) => sum + row.amount, 0)).toBeCloseTo(APRIL_2026_MANUAL_AUDIT.moneyIn, 2);
+  });
+
+  it("ledger engine: stored income rows are never demoted to expense by broad merchant rules", () => {
+    // 5 rows the bank stored as income. None of these are HL vending / SAYG / Dave fee,
+    // so the engine MUST keep all 5 as income — no broad expense merchant rule may demote them.
+    const base = {
+      month: "2026-04",
+      category: "Uncategorized",
+      type: "income" as const,
+      status: "cleared" as const,
+      userId: "fixture",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    };
+    const txs: Transaction[] = [
+      { ...base, id: "i1", date: "2026-04-02", name: "Walmart.com return", amount: 13.59, incomeCategory: "Other Income" },
+      { ...base, id: "i2", date: "2026-04-13", name: "Amazon transfer", amount: 92.50, incomeCategory: "Gig Work" },
+      { ...base, id: "i3", date: "2026-04-13", name: "AMAZON FLEX – GIG WORK INCOME", amount: 104.50, incomeCategory: "Gig Work" },
+      { ...base, id: "i4", date: "2026-04-20", name: "Google One refund", amount: 1.69, incomeCategory: "Other Income" },
+      { ...base, id: "i5", date: "2026-04-22", name: "Netflix reversal", amount: 28.61, incomeCategory: "Other Income" },
+    ];
+
+    const { finalRows } = getFinalLedgerResult(txs);
+    const totals = getLedgerTotals(finalRows);
+
+    // All 5 rows must remain income
+    expect(finalRows.filter((r) => r.type === "income")).toHaveLength(5);
+    expect(finalRows.filter((r) => r.type === "expense")).toHaveLength(0);
+    expect(totals.income).toBeCloseTo(13.59 + 92.50 + 104.50 + 1.69 + 28.61, 2);
+    expect(totals.spending).toBe(0);
+  });
+
+  it("ledger engine: Hobby Lobby PAYROLL deposits (PR Dir Dep, $800+) are NEVER demoted", () => {
+    const base = {
+      month: "2026-04",
+      category: "Uncategorized",
+      type: "income" as const,
+      status: "cleared" as const,
+      userId: "fixture",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    };
+    const txs: Transaction[] = [
+      // Real Wells Fargo paycheck descriptions
+      { ...base, id: "pay1", date: "2026-04-03", name: "Hobby Lobby Stor PR Dir Dep James K Bly", amount: 1125.68, incomeCategory: "Payroll" },
+      { ...base, id: "pay2", date: "2026-04-17", name: "HOBBY LOBBY STOR PR DIR DEP JAMES K BLY", amount: 827.74, incomeCategory: "Payroll" },
+      // Vending must still be demoted
+      { ...base, id: "vend1", date: "2026-04-08", name: "HOBBY LOBBY VENDIN – SAN ANTONIO TX", amount: 1.25 },
+      // Bare HL under $15 with no payroll signal must still be demoted (vending refund)
+      { ...base, id: "vend2", date: "2026-04-14", name: "HOBBY LOBBY", amount: 1.25 },
+    ];
+
+    const { finalRows } = getFinalLedgerResult(txs);
+    const totals = getLedgerTotals(finalRows);
+
+    const incomeIds = finalRows.filter((r) => r.type === "income").map((r) => r.id).sort();
+    const expenseIds = finalRows.filter((r) => r.type === "expense").map((r) => r.id).sort();
+    expect(incomeIds).toEqual(["pay1", "pay2"]);
+    expect(expenseIds).toEqual(["vend1", "vend2"]);
+    expect(totals.income).toBeCloseTo(1125.68 + 827.74, 2);
+    expect(totals.spending).toBeCloseTo(2.50, 2);
+  });
+
+  it("ledger engine: multiple income transfers with identical metadata are ALL preserved (no auto-dedupe)", () => {
+    // Two real Amazon transfers of $76 on the same day with identical bank descriptions.
+    // The engine MUST keep both — only import-time exact-match dedup may flag them,
+    // and even then it routes them to user review (never auto-skip).
+    const base = {
+      month: "2026-04",
+      category: "Uncategorized",
+      type: "income" as const,
+      status: "cleared" as const,
+      incomeCategory: "Gig Work" as const,
+      userId: "fixture",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    };
+    const txs: Transaction[] = [
+      { ...base, id: "amz-a", date: "2026-04-23", name: "MONEY TRANSFER AUTHORIZED ON 04/23 FROM GD-AMAZON GD-AMAZON CA", amount: 76.00 },
+      { ...base, id: "amz-b", date: "2026-04-23", name: "MONEY TRANSFER AUTHORIZED ON 04/23 FROM GD-AMAZON GD-AMAZON CA", amount: 76.00 },
+    ];
+
+    const result = getFinalLedgerResult(txs);
+    expect(result.finalRows).toHaveLength(2);
+    expect(result.excludedRows).toHaveLength(0);
+    expect(result.finalRows.every((r) => r.type === "income")).toBe(true);
+
+    const totals = getLedgerTotals(result.finalRows);
+    expect(totals.income).toBeCloseTo(152.00, 2);
+  });
+
+  it("ledger engine: ONLY narrow explicit overrides demote stored income (HL vending, SAYG, Dave fee)", () => {
+    const base = {
+      month: "2026-04",
+      category: "Uncategorized",
+      type: "income" as const,
+      status: "cleared" as const,
+      userId: "fixture",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    };
+    const txs: Transaction[] = [
+      // Should be DEMOTED — narrow explicit list
+      { ...base, id: "x1", date: "2026-04-07", name: "Hobby Lobby vending", amount: 3.00 },
+      { ...base, id: "x2", date: "2026-04-08", name: "Save As You Go", amount: 6.00 },
+      { ...base, id: "x3", date: "2026-04-08", name: "Dave fee", amount: 1.00 },
+      // Should be KEPT — broad merchants that happen to contain "amazon" / "walmart"
+      { ...base, id: "y1", date: "2026-04-13", name: "Amazon transfer", amount: 50.00 },
+      { ...base, id: "y2", date: "2026-04-02", name: "Walmart.com return", amount: 13.59 },
+    ];
+
+    const { finalRows } = getFinalLedgerResult(txs);
+    const incomeIds = finalRows.filter((r) => r.type === "income").map((r) => r.id).sort();
+    const expenseIds = finalRows.filter((r) => r.type === "expense").map((r) => r.id).sort();
+
+    expect(incomeIds).toEqual(["y1", "y2"]);
+    expect(expenseIds).toEqual(["x1", "x2", "x3"]);
+  });
+
+  it("ledger engine: getIncomeRowsDiagnostic explains every stored-income row with a reason", () => {
+    const base = {
+      month: "2026-04",
+      category: "Uncategorized",
+      type: "income" as const,
+      status: "cleared" as const,
+      userId: "fixture",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    };
+    const txs: Transaction[] = [
+      { ...base, id: "kept", date: "2026-04-13", name: "Amazon transfer", amount: 92.50 },
+      { ...base, id: "demoted", date: "2026-04-07", name: "Hobby Lobby vending", amount: 3.00 },
+    ];
+
+    const diag = getIncomeRowsDiagnostic(txs);
+    expect(diag).toHaveLength(2);
+
+    const kept = diag.find((d) => d.id === "kept")!;
+    expect(kept.included).toBe(true);
+    expect(kept.engineType).toBe("income");
+    expect(kept.typeChange).toBe("preserved");
+    expect(kept.reason).toBe("stored_income_type");
+
+    const demoted = diag.find((d) => d.id === "demoted")!;
+    expect(demoted.included).toBe(false);
+    expect(demoted.engineType).toBe("expense");
+    expect(demoted.typeChange).toBe("demoted_to_expense");
+    expect(demoted.reason).toBe("explicit_income_override");
   });
 
   it("AMAZON FLEX – GIG WORK INCOME stays income and never becomes expense or shopping", () => {
@@ -459,5 +609,201 @@ describe("April 2026 Wells Fargo manual audit (fixtures)", () => {
     expect(cat.Work ?? 0).toBeCloseTo(APRIL_2026_MANUAL_AUDIT.categories.Work, 1);
     expect(cat.Waste ?? 0).toBeCloseTo(APRIL_2026_MANUAL_AUDIT.categories.Waste, 1);
     expect(cat.Personal ?? 0).toBeCloseTo(APRIL_2026_MANUAL_AUDIT.categories.Personal, 1);
+  });
+
+  // ─── Safe-import label classifier ───────────────────────────────────────────
+
+  describe("safe-import labels (NEW_SAFE_TO_IMPORT / EXACT_DUPLICATE_SKIP / POSTING_DATE_MATCH_REVIEW / POSSIBLE_DUPLICATE_REVIEW / CONFLICT_REVIEW)", () => {
+    const baseExisting: Transaction = {
+      id: "existing-1",
+      date: "2026-04-13",
+      name: "OnCue Store #0117",
+      amount: 34.86,
+      category: "Fuel",
+      month: "2026-04",
+      type: "expense",
+      status: "cleared",
+      userId: "fixture",
+      createdAt: "2026-04-13T00:00:00.000Z",
+      updatedAt: "2026-04-13T00:00:00.000Z",
+    };
+
+    it("NEW_SAFE_TO_IMPORT: a brand-new row with no Firestore match", () => {
+      const preview = runRulesEngine(
+        [{ date: "2026-04-20", name: "OnCue Store #0117", amount: 39.65, txType: "expense" }],
+        [],
+        [baseExisting],
+      );
+      expect(preview).toHaveLength(1);
+      expect(getSafeImportLabel(preview[0])).toBe("NEW_SAFE_TO_IMPORT");
+      expect(preview[0].action).toBe("save");
+    });
+
+    it("EXACT_DUPLICATE_SKIP: same date + name + amount as an existing row", () => {
+      const preview = runRulesEngine(
+        [{ date: "2026-04-13", name: "OnCue Store #0117", amount: 34.86, txType: "expense" }],
+        [],
+        [baseExisting],
+      );
+      expect(preview).toHaveLength(1);
+      expect(getSafeImportLabel(preview[0])).toBe("EXACT_DUPLICATE_SKIP");
+    });
+
+    it("POSTING_DATE_MATCH_REVIEW: expense ±2 days with first-word match", () => {
+      const preview = runRulesEngine(
+        [{ date: "2026-04-15", name: "OnCue Convenience", amount: 34.86, txType: "expense" }],
+        [],
+        [baseExisting],
+      );
+      expect(preview).toHaveLength(1);
+      expect(getSafeImportLabel(preview[0])).toBe("POSTING_DATE_MATCH_REVIEW");
+      expect(preview[0].action).toBe("review");
+    });
+
+    it("POSSIBLE_DUPLICATE_REVIEW: income exact-match (income never auto-skips)", () => {
+      const existingIncome: Transaction = {
+        id: "inc-1",
+        date: "2026-04-23",
+        name: "MONEY TRANSFER FROM GD-AMAZON CA",
+        amount: 76.00,
+        category: "Uncategorized",
+        month: "2026-04",
+        type: "income",
+        incomeCategory: "Gig Work",
+        status: "cleared",
+        userId: "fixture",
+        createdAt: "2026-04-23T00:00:00.000Z",
+        updatedAt: "2026-04-23T00:00:00.000Z",
+      };
+      const preview = runRulesEngine(
+        [{ date: "2026-04-23", name: "MONEY TRANSFER FROM GD-AMAZON CA", amount: 76.00, txType: "income" }],
+        [],
+        [existingIncome],
+      );
+      expect(preview).toHaveLength(1);
+      // Exact-match income falls through to EXACT_DUPLICATE_SKIP per the classifier mapping.
+      // (The user can still flip action="save" if they confirm both are real.)
+      expect(getSafeImportLabel(preview[0])).toBe("EXACT_DUPLICATE_SKIP");
+      expect(preview[0].action).toBe("review");
+    });
+
+    it("CONFLICT_REVIEW: within-batch identical expense rows", () => {
+      const preview = runRulesEngine(
+        [
+          { date: "2026-04-20", name: "Pyrvia Subscription", amount: 40.00, txType: "expense" },
+          { date: "2026-04-20", name: "Pyrvia Subscription", amount: 40.00, txType: "expense" },
+        ],
+        [],
+        [], // no existing
+      );
+      expect(preview).toHaveLength(2);
+      // First copy is fine, second is the batch-internal duplicate
+      expect(getSafeImportLabel(preview[0])).toBe("NEW_SAFE_TO_IMPORT");
+      expect(getSafeImportLabel(preview[1])).toBe("CONFLICT_REVIEW");
+    });
+
+    it("label tally on a mixed batch sums to total preview rows", () => {
+      const preview = runRulesEngine(
+        [
+          { date: "2026-04-22", name: "Brand New Store", amount: 12.34, txType: "expense" },
+          { date: "2026-04-13", name: "OnCue Store #0117", amount: 34.86, txType: "expense" },
+          { date: "2026-04-15", name: "OnCue Convenience", amount: 34.86, txType: "expense" },
+        ],
+        [],
+        [baseExisting],
+      );
+      const counts: Record<string, number> = {};
+      for (const p of preview) {
+        const lbl = getSafeImportLabel(p);
+        counts[lbl] = (counts[lbl] ?? 0) + 1;
+      }
+      expect(counts.NEW_SAFE_TO_IMPORT).toBe(1);
+      expect(counts.EXACT_DUPLICATE_SKIP).toBe(1);
+      expect(counts.POSTING_DATE_MATCH_REVIEW).toBe(1);
+      expect(Object.values(counts).reduce((s, n) => s + n, 0)).toBe(preview.length);
+    });
+  });
+
+  // ─── Suspected income duplicates (post-import review) ───────────────────────
+
+  describe("findSuspectedIncomeDuplicates", () => {
+    const baseRow = {
+      month: "2026-04",
+      category: "Uncategorized",
+      type: "income" as const,
+      status: "cleared" as const,
+      userId: "fixture",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    };
+
+    it("flags the 04/17 PURCHASE RETURN $42.53 pair (different descriptions, same date+amount)", () => {
+      const txs: Transaction[] = [
+        {
+          ...baseRow,
+          id: "ret-long",
+          date: "2026-04-17",
+          name: "PURCHASE RETURN AUTHORIZED ON 04/16 AMAZON MKTPLACE PM AMZN.COM/BILL WA S306107215815696",
+          amount: 42.53,
+        },
+        { ...baseRow, id: "ret-short", date: "2026-04-17", name: "PURCHASE RETURN", amount: 42.53 },
+      ];
+      const groups = findSuspectedIncomeDuplicates(txs);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].date).toBe("2026-04-17");
+      expect(groups[0].amount).toBeCloseTo(42.53, 2);
+      expect(groups[0].rows.map((r) => r.id).sort()).toEqual(["ret-long", "ret-short"]);
+    });
+
+    it("flags the 04/22 NETFLIX REVERSAL $28.61 pair imported twice", () => {
+      const txs: Transaction[] = [
+        { ...baseRow, id: "nflx-a", date: "2026-04-22", name: "RECURRING PAYMENT REVERSAL ON 04/21 NETFLIX.COM 408-5403700 CA S356112030090775", amount: 28.61 },
+        { ...baseRow, id: "nflx-b", date: "2026-04-22", name: "RECURRING PAYMENT REVERSAL ON 04/21 NETFLIX.COM 408-5403700 CA S356112030090775", amount: 28.61 },
+      ];
+      const groups = findSuspectedIncomeDuplicates(txs);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].rows).toHaveLength(2);
+    });
+
+    it("does NOT flag two legitimate Amazon transfers of $76 on different dates", () => {
+      const txs: Transaction[] = [
+        { ...baseRow, id: "amz-a", date: "2026-04-02", name: "Money Transfer From Gd-Amazon CA", amount: 76.00 },
+        { ...baseRow, id: "amz-b", date: "2026-04-14", name: "Money Transfer From Gd-Amazon CA", amount: 76.00 },
+        { ...baseRow, id: "amz-c", date: "2026-04-23", name: "Money Transfer From Gd-Amazon CA", amount: 76.00 },
+      ];
+      expect(findSuspectedIncomeDuplicates(txs)).toEqual([]);
+    });
+
+    it("DOES flag two $76 Amazon transfers on the SAME date — user must confirm both are real", () => {
+      // The fixture expects 2× $76 on 04/23; the panel surfaces them so the user
+      // can confirm "Keep both" instead of relying on engine guessing.
+      const txs: Transaction[] = [
+        { ...baseRow, id: "amz-23a", date: "2026-04-23", name: "Money Transfer From Gd-Amazon CA", amount: 76.00 },
+        { ...baseRow, id: "amz-23b", date: "2026-04-23", name: "Money Transfer From Gd-Amazon CA", amount: 76.00 },
+      ];
+      const groups = findSuspectedIncomeDuplicates(txs);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].rows).toHaveLength(2);
+    });
+
+    it("does NOT flag expense rows or mix expense+income groups", () => {
+      const txs: Transaction[] = [
+        { ...baseRow, id: "exp-1", type: "expense", date: "2026-04-13", name: "OnCue", amount: 34.86 },
+        { ...baseRow, id: "exp-2", type: "expense", date: "2026-04-13", name: "OnCue", amount: 34.86 },
+        { ...baseRow, id: "inc-1", date: "2026-04-13", name: "Money Transfer", amount: 34.86 },
+      ];
+      // Only one income row of $34.86 → no group
+      expect(findSuspectedIncomeDuplicates(txs)).toEqual([]);
+    });
+
+    it("normalizes mixed date formats (MM/DD/YYYY vs ISO) when grouping", () => {
+      const txs: Transaction[] = [
+        { ...baseRow, id: "fmt-iso", date: "2026-04-17", name: "Purchase Return", amount: 42.53 },
+        { ...baseRow, id: "fmt-slash", date: "04/17/2026", name: "PURCHASE RETURN AUTHORIZED ON 04/16 AMAZON", amount: 42.53 },
+      ];
+      const groups = findSuspectedIncomeDuplicates(txs);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].rows).toHaveLength(2);
+    });
   });
 });
