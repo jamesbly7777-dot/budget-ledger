@@ -565,9 +565,6 @@ export function computeBillManagerReconciliation(
   }
 
   // If a bill was manually marked paid but wasn't matched via transaction, keep it as paid.
-  // !matchedBillIds.has(b.id) already prevents double-counting; findLinkedTransaction is not
-  // checked here because it can match transactions outside the "Bills" category that were
-  // never counted in paidAmount, causing remaining to stay non-zero for crossed-off bills.
   const manualPaidUnlinked = dedupedBills
     .filter((b) => isPaidInMonth(b, month) && !matchedBillIds.has(b.id))
     .reduce((s, b) => s + b.amount, 0);
