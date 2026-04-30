@@ -34,6 +34,23 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
+// Inject Firebase config at runtime so Railway env vars reach the frontend
+// without needing Docker build args. Loaded before the main JS bundle.
+app.get("/config.js", (_req, res) => {
+  res.type("application/javascript");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  const config = {
+    VITE_FIREBASE_API_KEY: process.env.VITE_FIREBASE_API_KEY ?? "",
+    VITE_FIREBASE_AUTH_DOMAIN: process.env.VITE_FIREBASE_AUTH_DOMAIN ?? "",
+    VITE_FIREBASE_PROJECT_ID: process.env.VITE_FIREBASE_PROJECT_ID ?? "",
+    VITE_FIREBASE_STORAGE_BUCKET: process.env.VITE_FIREBASE_STORAGE_BUCKET ?? "",
+    VITE_FIREBASE_MESSAGING_SENDER_ID: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "",
+    VITE_FIREBASE_APP_ID: process.env.VITE_FIREBASE_APP_ID ?? "",
+    VITE_FIREBASE_MEASUREMENT_ID: process.env.VITE_FIREBASE_MEASUREMENT_ID ?? "",
+  };
+  res.send(`window.__CONFIG__ = ${JSON.stringify(config)};`);
+});
+
 // Serve the ledger-app static build with SPA fallback
 // Use import.meta.url so the path works regardless of cwd (dev vs production)
 // Bundle lives at artifacts/api-server/dist/index.mjs → go up 2 dirs → artifacts/
