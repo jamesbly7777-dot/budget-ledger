@@ -9,7 +9,13 @@
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
   "private": true,
+  "dependencies": {
+    "formidable": "^3.5.2",
+    "openai": "^6.33.0",
+    "pdf-parse": "^1.1.1"
+  },
   "devDependencies": {
+    "@types/formidable": "^3.4.5",
     "prettier": "^3.8.1",
     "typescript": "~5.9.2"
   }

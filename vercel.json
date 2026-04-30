@@ -1,0 +1,15 @@
+{
+  "buildCommand": "pnpm --filter @workspace/ledger-app run build",
+  "outputDirectory": "artifacts/ledger-app/dist/public",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "framework": null,
+  "functions": {
+    "api/parse-statement.ts": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
