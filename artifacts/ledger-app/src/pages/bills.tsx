@@ -40,6 +40,13 @@ interface SuggestedBill {
   sourceMonth: string;
 }
 
+interface DuplicateBillGroup {
+  id: string;
+  bills: Bill[];
+  keepId: string;
+  suggestedDeleteIds: Set<string>;
+}
+
 function normalizeName(name: string): string {
   return name
     .toLowerCase()
@@ -50,6 +57,18 @@ function normalizeName(name: string): string {
     .filter((w) => w.length > 2)
     .slice(0, 4)
     .join(" ");
+}
+
+function normalizeBillAliasKey(name: string): string {
+  return normalizeName(name)
+    .replace(/\bpurchase\b/g, "")
+    .replace(/\bfin\b/g, "finance")
+    .replace(/\bflexible\b/g, "flex")
+    .replace(/\bfinance\b/g, "finance")
+    .replace(/\bnew\b/g, "")
+    .replace(/\byork\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // Dates are stored as YYYY-MM-DD — extract the day portion (index 2 after splitting on "-")
@@ -413,6 +432,9 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const [formData, setFormData] = useState(BLANK_FORM);
   const [confirmAction, setConfirmAction] = useState<null | "fix" | "clear" | "markAllPaid" | "monthAudit">(null);
   const [isRunningBulk, setIsRunningBulk] = useState(false);
+  const [duplicateBillsOpen, setDuplicateBillsOpen] = useState(false);
+  const [selectedDuplicateBillIds, setSelectedDuplicateBillIds] = useState<Set<string>>(new Set());
+  const [removingDuplicateBills, setRemovingDuplicateBills] = useState(false);
 
   const [recurringCollapsed, setRecurringCollapsed] = useState(false);
   const [monthSpecificCollapsed, setMonthSpecificCollapsed] = useState(false);
@@ -446,6 +468,68 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
   const allMonthBills = useMemo(
     () => [...recurringBills, ...monthSpecificBills],
     [recurringBills, monthSpecificBills]
+  );
+
+  const duplicateBillGroups = useMemo<DuplicateBillGroup[]>(() => {
+    const groups = new Map<string, Bill[]>();
+    for (const bill of allMonthBills) {
+      const key = `${normalizeName(bill.name)}|${Math.abs(bill.amount).toFixed(2)}`;
+      const group = groups.get(key) ?? [];
+      group.push(bill);
+      groups.set(key, group);
+    }
+    return Array.from(groups.entries())
+      .filter(([, group]) => group.length > 1)
+      .map(([key, group]) => {
+        const sorted = [...group].sort((a, b) => {
+          const paidDiff = (b.paidMonths?.length ?? 0) - (a.paidMonths?.length ?? 0);
+          if (paidDiff !== 0) return paidDiff;
+          const recurringDiff = Number(b.isRecurring) - Number(a.isRecurring);
+          if (recurringDiff !== 0) return recurringDiff;
+          return a.dueDay - b.dueDay;
+        });
+        const keepId = sorted[0].id;
+        return {
+          id: key,
+          bills: sorted,
+          keepId,
+          suggestedDeleteIds: new Set(sorted.slice(1).map((bill) => bill.id)),
+        };
+      });
+  }, [allMonthBills]);
+
+  const fuzzyDuplicateBillGroups = useMemo<DuplicateBillGroup[]>(() => {
+    const groups = new Map<string, Bill[]>();
+    const exactDuplicateBillIds = new Set(duplicateBillGroups.flatMap((group) => group.bills.map((bill) => bill.id)));
+    for (const bill of allMonthBills) {
+      if (exactDuplicateBillIds.has(bill.id)) continue;
+      const aliasKey = normalizeBillAliasKey(bill.name);
+      if (!aliasKey) continue;
+      const key = `${aliasKey}|${Math.abs(bill.amount).toFixed(2)}`;
+      const group = groups.get(key) ?? [];
+      group.push(bill);
+      groups.set(key, group);
+    }
+    return Array.from(groups.entries())
+      .filter(([, group]) => group.length > 1)
+      .map(([key, group]) => {
+        const sorted = [...group].sort((a, b) => {
+          const paidDiff = (b.paidMonths?.length ?? 0) - (a.paidMonths?.length ?? 0);
+          if (paidDiff !== 0) return paidDiff;
+          return a.dueDay - b.dueDay;
+        });
+        return {
+          id: key,
+          bills: sorted,
+          keepId: sorted[0].id,
+          suggestedDeleteIds: new Set(sorted.slice(1).map((bill) => bill.id)),
+        };
+      });
+  }, [allMonthBills, duplicateBillGroups]);
+
+  const allDuplicateBillGroups = useMemo(
+    () => [...duplicateBillGroups, ...fuzzyDuplicateBillGroups],
+    [duplicateBillGroups, fuzzyDuplicateBillGroups],
   );
 
   // Map from bill.id → matching ledger transaction for the selected month
@@ -832,6 +916,32 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
     toast({ description: "All bills cleared." });
   };
 
+  const openDuplicateBillCleanup = () => {
+    const defaults = new Set<string>();
+    allDuplicateBillGroups.forEach((group) => group.suggestedDeleteIds.forEach((id) => defaults.add(id)));
+    setSelectedDuplicateBillIds(defaults);
+    setDuplicateBillsOpen(true);
+  };
+
+  const handleRemoveDuplicateBills = async () => {
+    const ids = Array.from(selectedDuplicateBillIds);
+    if (!ids.length) return;
+    setRemovingDuplicateBills(true);
+    try {
+      for (const id of ids) {
+        await deleteBill.mutateAsync(id);
+      }
+      toast({
+        title: "Duplicate bills removed",
+        description: `Removed ${ids.length} duplicate bill${ids.length !== 1 ? "s" : ""}.`,
+      });
+      setDuplicateBillsOpen(false);
+      setSelectedDuplicateBillIds(new Set());
+    } finally {
+      setRemovingDuplicateBills(false);
+    }
+  };
+
   const runMonthAuditCleanup = async () => {
     if (!monthTxs) return;
     setIsRunningBulk(true);
@@ -920,6 +1030,17 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           {(bills || []).length > 0 && (
             <Button variant="outline" onClick={() => setConfirmAction("clear")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider border-red-500/40 text-red-400 hover:bg-red-500/10">
               <Trash className="h-4 w-4 mr-2" /> Clear All
+            </Button>
+          )}
+          {allDuplicateBillGroups.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={openDuplicateBillCleanup}
+              disabled={removingDuplicateBills}
+              className="font-mono text-xs uppercase tracking-wider border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Clean Duplicates ({allDuplicateBillGroups.reduce((sum, group) => sum + group.suggestedDeleteIds.size, 0)})
             </Button>
           )}
           <Button
@@ -1230,6 +1351,66 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             <Button onClick={handleFixBillTypes} disabled={isRunningBulk} className="font-mono text-xs uppercase bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30">
               {isRunningBulk ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wrench className="w-4 h-4 mr-2" />}
               Fix Now
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Bill Cleanup Dialog */}
+      <Dialog open={duplicateBillsOpen} onOpenChange={setDuplicateBillsOpen}>
+        <DialogContent className="sm:max-w-[620px] bg-card border-border max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-yellow-400 tracking-wider text-sm">Duplicate Bills</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs font-mono text-muted-foreground">
+            Found <span className="text-yellow-400">{allDuplicateBillGroups.length}</span> duplicate bill group{allDuplicateBillGroups.length !== 1 ? "s" : ""}.
+            One bill is kept in each group; selected extra records will be deleted from Bill Manager only.
+          </p>
+          <div className="space-y-3 py-2">
+            {allDuplicateBillGroups.map((group) => (
+              <div key={group.id} className="border border-yellow-500/20 rounded-md p-3 bg-yellow-500/5">
+                <p className="font-mono text-xs text-yellow-400 uppercase tracking-wider mb-2">
+                  {group.bills.length} copies • ${group.bills[0]?.amount.toFixed(2)}
+                </p>
+                <div className="space-y-1">
+                  {group.bills.map((bill) => {
+                    const isKept = bill.id === group.keepId;
+                    const checked = selectedDuplicateBillIds.has(bill.id);
+                    return (
+                      <div key={bill.id} className={`flex items-center justify-between gap-3 text-xs font-mono ${isKept ? "text-foreground" : "text-muted-foreground"}`}>
+                        <label className="flex min-w-0 items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!isKept && checked}
+                            disabled={isKept}
+                            onChange={(e) => {
+                              const next = new Set(selectedDuplicateBillIds);
+                              if (e.target.checked) next.add(bill.id);
+                              else next.delete(bill.id);
+                              setSelectedDuplicateBillIds(next);
+                            }}
+                          />
+                          <span className="truncate">{bill.name}</span>
+                        </label>
+                        <span className="shrink-0 text-right">
+                          Day {bill.dueDay} • {bill.isRecurring ? "recurring" : bill.month || "month-only"} • {isKept ? "keep" : "duplicate"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 border-t border-border pt-3">
+            <Button variant="outline" onClick={() => setDuplicateBillsOpen(false)} className="font-mono text-xs uppercase">Cancel</Button>
+            <Button
+              onClick={handleRemoveDuplicateBills}
+              disabled={removingDuplicateBills || selectedDuplicateBillIds.size === 0}
+              className="font-mono text-xs uppercase bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30"
+            >
+              {removingDuplicateBills ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              Remove Selected ({selectedDuplicateBillIds.size})
             </Button>
           </div>
         </DialogContent>
