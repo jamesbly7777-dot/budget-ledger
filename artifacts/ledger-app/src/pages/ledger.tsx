@@ -727,7 +727,7 @@ export default function LedgerPage({
           </div>
           <div className="flex justify-end gap-2 border-t border-border pt-3">
             <Button variant="outline" onClick={() => setDupDialogOpen(false)} className="font-mono text-xs uppercase">Cancel</Button>
-            <Button onClick={handleRemoveDuplicates} disabled={removingDups || selectedDuplicateIds.size === 0} className="font-mono text-xs uppercase bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30">
+            <Button variant="warning" onClick={handleRemoveDuplicates} disabled={removingDups || selectedDuplicateIds.size === 0} className="font-mono text-xs uppercase">
               {removingDups ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
               Remove Selected ({selectedDuplicateIds.size})
             </Button>
@@ -774,7 +774,8 @@ export default function LedgerPage({
             <Button
               onClick={handleReclassifyIncome}
               disabled={reclassifyingIncome || selectedIncomeIds.size === 0}
-              className="font-mono text-xs uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
+              variant="success"
+              className="font-mono text-xs uppercase"
             >
               {reclassifyingIncome ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <TrendingUp className="w-4 h-4 mr-2" />}
               Reclassify Selected ({selectedIncomeIds.size})

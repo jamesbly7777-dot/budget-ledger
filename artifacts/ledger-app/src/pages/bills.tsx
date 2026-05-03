@@ -1022,39 +1022,39 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             <ScanSearch className="h-4 w-4 mr-2" /> Detect
           </Button>
           {(bills || []).length > 0 && (
-            <Button variant="outline" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
+            <Button variant="warning" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider">
               {isRunningBulk ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wrench className="h-4 w-4 mr-2" />}
               Fix Types
             </Button>
           )}
           {(bills || []).length > 0 && (
-            <Button variant="outline" onClick={() => setConfirmAction("clear")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider border-red-500/40 text-red-400 hover:bg-red-500/10">
+            <Button variant="destructive" onClick={() => setConfirmAction("clear")} disabled={isRunningBulk} className="font-mono text-xs uppercase tracking-wider">
               <Trash className="h-4 w-4 mr-2" /> Clear All
             </Button>
           )}
           {allDuplicateBillGroups.length > 0 && (
             <Button
-              variant="outline"
+              variant="warning"
               onClick={openDuplicateBillCleanup}
               disabled={removingDuplicateBills}
-              className="font-mono text-xs uppercase tracking-wider border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10"
+              className="font-mono text-xs uppercase tracking-wider"
             >
               <Trash2 className="h-4 w-4 mr-2" />
               Clean Duplicates ({allDuplicateBillGroups.reduce((sum, group) => sum + group.suggestedDeleteIds.size, 0)})
             </Button>
           )}
           <Button
-            variant="outline"
+            variant="warning"
             onClick={() => setConfirmAction("monthAudit")}
             disabled={isRunningBulk}
-            className="font-mono text-xs uppercase tracking-wider border-orange-500/40 text-orange-300 hover:bg-orange-500/10"
+            className="font-mono text-xs uppercase tracking-wider"
           >
             <RefreshCw className="h-4 w-4 mr-2" /> Month Audit Fix
           </Button>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => { setPasteText(""); setParsedBills([]); setPasteOpen(true); }}
-            className="font-mono text-xs uppercase tracking-wider border-primary/40 text-primary hover:bg-primary/10"
+            className="font-mono text-xs uppercase tracking-wider"
           >
             <ClipboardList className="h-4 w-4 mr-2" /> Paste List
           </Button>
@@ -1213,7 +1213,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             )}
             <div className="flex gap-2 flex-wrap justify-center">
               {(bills || []).some((b) => !b.isRecurring) && (
-                <Button variant="outline" size="sm" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="font-mono text-xs uppercase border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10">
+                <Button variant="warning" size="sm" onClick={() => setConfirmAction("fix")} disabled={isRunningBulk} className="font-mono text-xs uppercase">
                   <Wrench className="h-3.5 w-3.5 mr-2" /> Fix Types Now
                 </Button>
               )}
@@ -1329,7 +1329,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           </p>
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="outline" onClick={() => setConfirmAction(null)} className="font-mono text-xs uppercase">Cancel</Button>
-            <Button onClick={markAllPaid} disabled={isMarkingAllPaid} className="font-mono text-xs uppercase bg-green-500/20 text-green-400 border border-green-500/40 hover:bg-green-500/30">
+            <Button variant="success" onClick={markAllPaid} disabled={isMarkingAllPaid} className="font-mono text-xs uppercase">
               {isMarkingAllPaid ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
               {isMarkingAllPaid ? "Saving..." : "Confirm"}
             </Button>
@@ -1348,7 +1348,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           </p>
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="outline" onClick={() => setConfirmAction(null)} className="font-mono text-xs uppercase">Cancel</Button>
-            <Button onClick={handleFixBillTypes} disabled={isRunningBulk} className="font-mono text-xs uppercase bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30">
+            <Button variant="warning" onClick={handleFixBillTypes} disabled={isRunningBulk} className="font-mono text-xs uppercase">
               {isRunningBulk ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wrench className="w-4 h-4 mr-2" />}
               Fix Now
             </Button>
@@ -1407,7 +1407,8 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
             <Button
               onClick={handleRemoveDuplicateBills}
               disabled={removingDuplicateBills || selectedDuplicateBillIds.size === 0}
-              className="font-mono text-xs uppercase bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30"
+              variant="warning"
+              className="font-mono text-xs uppercase"
             >
               {removingDuplicateBills ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
               Remove Selected ({selectedDuplicateBillIds.size})
@@ -1438,7 +1439,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
                 handleScan();
               }}
               disabled={isRunningBulk}
-              className="font-mono text-xs uppercase bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30"
+              className="font-mono text-xs uppercase"
             >
               {isRunningBulk ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ScanSearch className="w-4 h-4 mr-2" />}
               Clear &amp; Re-detect
@@ -1458,7 +1459,7 @@ export default function BillsPage({ selectedMonth }: { selectedMonth: string }) 
           </p>
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="outline" onClick={() => setConfirmAction(null)} className="font-mono text-xs uppercase">Cancel</Button>
-            <Button onClick={runMonthAuditCleanup} disabled={isRunningBulk} className="font-mono text-xs uppercase bg-orange-500/20 text-orange-300 border border-orange-500/40 hover:bg-orange-500/30">
+            <Button variant="warning" onClick={runMonthAuditCleanup} disabled={isRunningBulk} className="font-mono text-xs uppercase">
               {isRunningBulk ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
               Apply Cleanup
             </Button>
