@@ -201,11 +201,11 @@ export default function AuthPage() {
                 style={
                   mode === m
                     ? {
-                        background: "linear-gradient(135deg, rgba(56,189,248,0.2) 0%, rgba(99,102,241,0.15) 100%)",
-                        color: "#e0f2fe",
-                        boxShadow: "inset 0 0 0 1px rgba(56,189,248,0.3)",
+                        background: "linear-gradient(175deg, #002a2a 0%, #001a1a 50%, #000d10 100%)",
+                        color: "#00ffcc",
+                        outline: "1px solid rgba(0,255,204,.35)",
                       }
-                    : { color: "rgba(148,163,184,0.55)" }
+                    : { color: "rgba(148,163,184,0.45)" }
                 }
               >
                 {m === "login" ? "Login" : "Register"}
@@ -239,19 +239,14 @@ export default function AuthPage() {
               />
             </div>
 
-            <button
+            <Button
               onClick={handleAuth}
               disabled={loading || !email || !password}
-              className="w-full h-11 rounded-lg font-mono text-xs uppercase tracking-widest font-bold flex items-center justify-center gap-2 transition-all mt-2 disabled:opacity-50"
-              style={{
-                background: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 60%, #ec4899 100%)",
-                boxShadow: "0 0 24px rgba(14,165,233,0.35), 0 0 48px rgba(236,72,153,0.15), 0 4px 16px rgba(0,0,0,0.4)",
-                color: "#fff",
-              }}
+              className="w-full h-11 font-mono text-xs uppercase tracking-widest font-bold mt-2"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
               {mode === "login" ? "Authenticate" : "Initialize Account"}
-            </button>
+            </Button>
           </div>
         </div>
 
